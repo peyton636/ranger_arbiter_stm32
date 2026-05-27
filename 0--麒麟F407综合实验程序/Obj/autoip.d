@@ -1,0 +1,9 @@
+.\obj\autoip.o: LwIP\lwip-1.4.1\src\core\ipv4\autoip.c
+.\obj\autoip.o: .\LwIP\lwip-1.4.1\src\include\lwip/opt.h
+.\obj\autoip.o: .\LwIP\lwip_app\lwip_comm\lwipopts.h
+.\obj\autoip.o: .\LwIP\lwip-1.4.1\src\include\lwip/debug.h
+.\obj\autoip.o: .\LwIP\lwip-1.4.1\src\include\lwip/arch.h
+.\obj\autoip.o: .\LwIP\arch/cc.h
+.\obj\autoip.o: .\LwIP\arch/cpu.h
+.\obj\autoip.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\obj\autoip.o: .\LwIP\lwip-1.4.1\src\include\lwip/opt.h

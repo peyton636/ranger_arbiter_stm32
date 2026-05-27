@@ -1,0 +1,9 @@
+.\obj\dhcp.o: LwIP\lwip-1.4.1\src\core\dhcp.c
+.\obj\dhcp.o: .\LwIP\lwip-1.4.1\src\include\lwip/opt.h
+.\obj\dhcp.o: .\LwIP\lwip_app\lwip_comm\lwipopts.h
+.\obj\dhcp.o: .\LwIP\lwip-1.4.1\src\include\lwip/debug.h
+.\obj\dhcp.o: .\LwIP\lwip-1.4.1\src\include\lwip/arch.h
+.\obj\dhcp.o: .\LwIP\arch/cc.h
+.\obj\dhcp.o: .\LwIP\arch/cpu.h
+.\obj\dhcp.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\obj\dhcp.o: .\LwIP\lwip-1.4.1\src\include\lwip/opt.h

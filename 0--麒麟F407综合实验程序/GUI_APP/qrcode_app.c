@@ -1,0 +1,218 @@
+#include "qrcode_app.h"
+#include "button.h"
+#include "touch.h"
+#include "common.h"
+#include "wm8978.h"	
+#include "videoplayer.h" 
+#include "time.h"
+#include "key.h"
+#include "font_show.h"
+
+
+__videodev videodev;		//视频播放控制器
+
+
+//视频列表
+u8*const VIDEO_LIST[GUI_LANGUAGE_NUM]=
+{
+	"视频列表","视频列表","VIDEO LIST",
+};
+
+//video文件浏览,带文件存储功能
+//videodev:audio结构体
+//返回值:0,正常返回/按了退出按钮.
+//		 1,内存分配失败	
+//		2,退出
+u8 video_filelist(__videodev *audiodevx)
+{	 	   
+	u8 res;
+	u8 rval=0;			//返回值	  
+  	u16 i;	    						   
+ 	_btn_obj* rbtn;		//返回按钮控件
+ 	_btn_obj* qbtn;		//退出按钮控件
+
+   	_filelistbox_obj * flistbox;
+	_filelistbox_list * filelistx; 	//文件
+ 	app_filebrower((u8*)VIDEO_LIST[gui_phy.language],0X07);	//选择目标文件,并得到目标数量
+ 
+  	flistbox=filelistbox_creat(0,gui_phy.tbheight,tftlcd_data.width,tftlcd_data.height-gui_phy.tbheight*2,1,gui_phy.listfsize);//创建一个filelistbox
+ 	if(flistbox==NULL)rval=1;							//申请内存失败.
+	else if(audiodevx->path==NULL)  
+	{
+		flistbox->fliter=FLBOX_FLT_VIDEO;	//查找视频文件
+ 		filelistbox_add_disk(flistbox);		//添加磁盘路径
+		filelistbox_draw_listbox(flistbox);
+	}else
+	{
+		flistbox->fliter=FLBOX_FLT_VIDEO;		//查找视频文件	 
+		flistbox->path=(u8*)gui_memin_malloc(strlen((const char*)audiodevx->path)+1);//为路径申请内存
+		strcpy((char *)flistbox->path,(char *)audiodevx->path);//复制路径	    
+		filelistbox_scan_filelist(flistbox);	//重新扫描列表 
+		flistbox->selindex=flistbox->foldercnt+audiodevx->curindex;//选中条目为当前正在播放的条目
+		if(flistbox->scbv->totalitems>flistbox->scbv->itemsperpage)flistbox->scbv->topitem=flistbox->selindex;  
+		filelistbox_draw_listbox(flistbox);		//重画 		 
+	} 	 		 
+	rbtn=btn_creat(tftlcd_data.width-2*gui_phy.tbfsize-8-1,tftlcd_data.height-gui_phy.tbheight,2*gui_phy.tbfsize+8,gui_phy.tbheight-1,0,0x03);//创建文字按钮
+  	qbtn=btn_creat(0,tftlcd_data.height-gui_phy.tbheight,2*gui_phy.tbfsize+8,gui_phy.tbheight,0,0x03);//创建退出文字按钮
+	if(rbtn==NULL||qbtn==NULL)rval=1;	//没有足够内存够分配
+	else
+	{
+	 	rbtn->caption=(u8*)GUI_BACK_CAPTION_TBL[gui_phy.language];	//返回
+	 	rbtn->font=gui_phy.tbfsize;//设置新的字体大小	 	 
+		rbtn->bcfdcolor=WHITE;	//按下时的颜色
+		rbtn->bcfucolor=WHITE;	//松开时的颜色
+		btn_draw(rbtn);//画按钮 
+		
+	 	qbtn->caption=(u8*)GUI_QUIT_CAPTION_TBL[gui_phy.language];	//名字
+	 	qbtn->font=gui_phy.tbfsize;//设置新的字体大小	 
+		qbtn->bcfdcolor=WHITE;	//按下时的颜色
+		qbtn->bcfucolor=WHITE;	//松开时的颜色
+		btn_draw(qbtn);//画按钮
+	}	   
+   	while(rval==0)
+	{
+		tp_dev.scan(0);    
+		in_obj.get_key(&tp_dev,IN_TYPE_TOUCH);	//得到按键键值   
+		delay_ms(10);		//延时一个时钟节拍
+		if(KEY_Scan(1)==KEY1_PRESS)break;		//KEY1返回
+		filelistbox_check(flistbox,&in_obj);	//扫描文件
+		res=btn_check(rbtn,&in_obj);
+		if(res)
+		{
+			if(((rbtn->sta&0X80)==0))//按钮状态改变了
+			{
+				if(flistbox->dbclick!=0X81)
+				{
+ 					filelistx=filelist_search(flistbox->list,flistbox->selindex);//得到此时选中的list的信息
+					if(filelistx->type==FICO_DISK)//已经不能再往上了
+					{				 
+						rval=2;
+						break;//退出
+					}else filelistbox_back(flistbox);//退回上一层目录	 
+				} 
+ 			}	 
+		}
+		res=btn_check(qbtn,&in_obj);
+		if(res)
+		{
+			if(((qbtn->sta&0X80)==0))//按钮状态改变了
+			{ 
+				rval=2;
+				break;//退出
+ 			}	 
+		}   
+		if(flistbox->dbclick==0X81)//双击文件了
+		{											 
+			gui_memin_free(audiodevx->path);		//释放内存
+			gui_memin_free(audiodevx->mfindextbl);	//释放内存
+			audiodevx->path=(u8*)gui_memin_malloc(strlen((const char*)flistbox->path)+1);//为新的路径申请内存
+			if(audiodevx->path==NULL){rval=1;break;}
+			audiodevx->path[0]='\0';//在最开始加入结束符.
+ 			strcpy((char *)audiodevx->path,(char *)flistbox->path);
+			audiodevx->mfindextbl=(u16*)gui_memin_malloc(flistbox->filecnt*2);//为新的tbl申请内存
+			if(audiodevx->mfindextbl==NULL){rval=1;break;}
+		    for(i=0;i<flistbox->filecnt;i++)audiodevx->mfindextbl[i]=flistbox->findextbl[i];//复制
+			audiodevx->mfilenum=flistbox->filecnt;		//记录文件个数	
+			videodev.curindex=flistbox->selindex-flistbox->foldercnt;
+			flistbox->dbclick=0;
+			break;	 							   			   
+		}
+	}	
+	filelistbox_delete(flistbox);	//删除filelist
+	btn_delete(qbtn);				//删除按钮	  	 
+	btn_delete(rbtn);				//删除按钮	   	
+	if(rval)
+	{
+		gui_memin_free(audiodevx->path);		//释放内存
+		gui_memin_free(audiodevx->mfindextbl); 	//释放内存
+		gui_memin_free(audiodevx);
+ 	}	 
+ 	return rval; 
+} 
+
+
+void Qrcode_APP_Test(void)
+{
+	u8 rval=0;
+	u8 res;	  
+	u8 *pname=0; 
+	u8 key; 
+	FILINFO *vfileinfo;	//文件信息
+	DIR vdir;	 		//目录
+	
+	
+	WM8978_Init();				//初始化WM8978
+	WM8978_ADDA_Cfg(1,0);		//开启DAC
+	WM8978_Input_Cfg(0,0,0);	//关闭输入通道
+	WM8978_Output_Cfg(1,0);		//开启DAC输出  
+	WM8978_HPvol_Set(40,40);
+	WM8978_SPKvol_Set(60);
+	
+	memset(&videodev,0,sizeof(__videodev));//videodev所有数据清零
+	res=video_filelist(&videodev);//选择视频文件进行播放
+	if(res)	//失败返回主界面
+	{
+		myfree(SRAMIN,vfileinfo);			//释放内存			    
+		myfree(SRAMIN,pname);				//释放内存
+		gui_memin_free(videodev.path);		//释放内存
+		gui_memin_free(videodev.mfindextbl);//释放内存 
+		WM8978_ADDA_Cfg(0,0);				//关闭DAC&ADC
+		WM8978_Input_Cfg(0,0,0);			//关闭输入通道
+		WM8978_Output_Cfg(0,0);				//关闭DAC输出
+		WM8978_HPvol_Set(0,0);	//耳机音量设置
+		WM8978_SPKvol_Set(0);	//喇叭音量设置
+		ICON_UI_Init();
+		return;
+	}
+	
+	FRONT_COLOR=WHITE;  
+  	BACK_COLOR=BLACK;  
+	LCD_Clear(BACK_COLOR);		//清屏
+	app_filebrower("视频播放器应用",0X05);//显示标题
+	app_gui_tcbar(0,tftlcd_data.height-gui_phy.tbheight,tftlcd_data.width,gui_phy.tbheight,0x01);	//上分界线
+	
+	vfileinfo=(FILINFO*)mymalloc(SRAMIN,sizeof(FILINFO));//为长文件缓存区分配内存 
+	rval=f_opendir(&vdir,(const TCHAR*)videodev.path);	//打开选中的目录
+	while(rval==0&&vfileinfo)
+	{
+VIDEO_START:
+		dir_sdi(&vdir,videodev.mfindextbl[videodev.curindex]);
+		rval=f_readdir(&vdir,vfileinfo);//读取文件信息
+		if(rval!=FR_OK||vfileinfo->fname[0]==0)break;	//错误了/到末尾了,退出
+		videodev.name=(u8*)(vfileinfo->fname); 
+		pname=gui_memin_malloc(strlen((const char*)videodev.name)+strlen((const char*)videodev.path)+2);//申请内存
+		if(pname==NULL)break;//申请失败    
+		pname=gui_path_name(pname,videodev.path,videodev.name);	//文件名加入路径 
+		printf("play:%s\r\n",pname); 
+		LCD_Clear(BACK_COLOR);							//先清屏
+		video_bmsg_show((u8*)vfileinfo->fname,videodev.curindex+1,videodev.mfilenum);//显示名字,索引等信息		
+		gui_show_string("KEY1:返回视频列表",10,120,tftlcd_data.width,16,16,RED);		 	 
+		gui_show_string("KEY2:下一首",10,140,tftlcd_data.width,16,16,RED);		 	 
+		gui_show_string("KEY_UP:快进",10,160,tftlcd_data.width,16,16,RED);		 	 
+		
+		key=video_play_mjpeg(pname); 			 	//播放这个音频文件
+		if(key<=1)		//下一曲
+		{
+			videodev.curindex++;		   	
+			if(videodev.curindex>=videodev.mfilenum)videodev.curindex=0;//到末尾的时候,自动从头开始
+ 		}
+		else if(key==2)
+		{
+			gui_memin_free(pname);
+			res=video_filelist(&videodev);//选择视频文件进行播放
+			if(res==1||res==2)break;
+			goto VIDEO_START;
+		}
+		else break;	//产生了错误 
+	}
+	myfree(SRAMIN,vfileinfo);			//释放内存			    
+	myfree(SRAMIN,pname);				//释放内存			    
+	gui_memin_free(videodev.path);		//释放内存
+	gui_memin_free(videodev.mfindextbl);//释放内存
+	WM8978_ADDA_Cfg(0,0);				//关闭DAC&ADC
+	WM8978_Input_Cfg(0,0,0);			//关闭输入通道
+	WM8978_Output_Cfg(0,0);				//关闭DAC输出
+	WM8978_HPvol_Set(0,0);	//耳机音量设置
+	WM8978_SPKvol_Set(0);	//喇叭音量设置
+	ICON_UI_Init();
+}
