@@ -443,58 +443,65 @@ void SensorData_ShowScreen(void)
 	u8 fsize = 16;
 	u8 buf[8];
 	static u32 cnt = 0;
+	static u8 first_show = 1;
 	
-	cnt++;
-	
-	// 清屏
-	LCD_Clear(BLACK);
-	
-	// 显示标题
-	LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "=== Sensor Data ===");
-	y += fsize + 10;
-	
-	// 显示计数器（验证刷新）
-	LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "Count: ");
-	LCD_ShowxNum(5+8*(fsize/2), y, cnt, 5, fsize, 0);
-	y += fsize + 10;
-	
-	// 显示 CAN 状态
-	LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "[CAN] ESR=0x");
-	LCD_ShowxNum(5+12*(fsize/2), y, (u32)CAN1->ESR, 8, fsize, 0);
-	y += fsize + 10;
-	
-	// 显示传感器数据
-	LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "Distance Sensors:");
-	y += fsize;
-	
-	for(i = 0; i < 4; i++)
+	// 只有在有新数据或第一次显示时才刷新屏幕
+	if(DistanceSensor_NewData() || first_show)
 	{
-		LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "IF");
-		LCD_ShowxNum(5+3*(fsize/2), y, i+1, 1, fsize, 0);
-		LCD_ShowString(5+4*(fsize/2), y, tftlcd_data.width, tftlcd_data.height, fsize, ": ");
+		first_show = 0;
+		cnt++;
 		
-		if(ds->valid && ds->error[i] == DS_ERR_NONE)
-		{
-			LCD_ShowxNum(5+6*(fsize/2), y, ds->dist[i], 5, fsize, 0);
-			LCD_ShowString(5+12*(fsize/2), y, tftlcd_data.width, tftlcd_data.height, fsize, " mm");
-			
-			// 准备 CAN 发送数据（大端序）
-			buf[i*2] = (ds->dist[i] >> 8) & 0xFF;
-			buf[i*2+1] = ds->dist[i] & 0xFF;
-		}
-		else
-		{
-			LCD_ShowString(5+6*(fsize/2), y, tftlcd_data.width, tftlcd_data.height, fsize, "---");
-		}
+		// 清屏
+		LCD_Clear(BLACK);
+		
+		// 显示标题
+		LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "=== Sensor Data ===");
+		y += fsize + 10;
+		
+		// 显示计数器
+		LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "Count: ");
+		LCD_ShowxNum(5+8*(fsize/2), y, cnt, 5, fsize, 0);
+		y += fsize + 10;
+		
+		// 显示 CAN 状态
+		LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "[CAN] ESR=0x");
+		LCD_ShowxNum(5+12*(fsize/2), y, (u32)CAN1->ESR, 8, fsize, 0);
+		y += fsize + 10;
+		
+		// 显示传感器数据
+		LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "Distance Sensors:");
 		y += fsize;
+		
+		for(i = 0; i < 4; i++)
+		{
+			LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "IF");
+			LCD_ShowxNum(5+3*(fsize/2), y, i+1, 1, fsize, 0);
+			LCD_ShowString(5+4*(fsize/2), y, tftlcd_data.width, tftlcd_data.height, fsize, ": ");
+			
+			if(ds->valid && ds->error[i] == DS_ERR_NONE)
+			{
+				LCD_ShowxNum(5+6*(fsize/2), y, ds->dist[i], 5, fsize, 0);
+				LCD_ShowString(5+12*(fsize/2), y, tftlcd_data.width, tftlcd_data.height, fsize, " mm");
+				
+				// 准备 CAN 发送数据（大端序）
+				buf[i*2] = (ds->dist[i] >> 8) & 0xFF;
+				buf[i*2+1] = ds->dist[i] & 0xFF;
+			}
+			else
+			{
+				LCD_ShowString(5+6*(fsize/2), y, tftlcd_data.width, tftlcd_data.height, fsize, "---");
+			}
+			y += fsize;
+		}
+		
+		// 通过 CAN 发送数据
+		if(ds->valid)
+		{
+			CAN1_Send_Msg_WithID(0x111, buf, 8);
+			LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "[CAN] Data sent!");
+		}
 	}
 	
-	// 如果有新数据，通过 CAN 发送
-	if(DistanceSensor_NewData() && ds->valid)
-	{
-		CAN1_Send_Msg_WithID(0x111, buf, 8);
-		LCD_ShowString(5, y, tftlcd_data.width, tftlcd_data.height, fsize, "[CAN] Data sent!");
-	}
-	
-	delay_ms(100);
+	// 短暂延迟，让出 CPU
+	delay_ms(10);
 }
