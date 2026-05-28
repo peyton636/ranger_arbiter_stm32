@@ -36,6 +36,8 @@
 .\obj\time.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h
 .\obj\time.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h
 .\obj\time.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
+.\obj\time.o: .\APP\distance_sensor\distance_sensor.h
+.\obj\time.o: .\APP\can\can.h
 .\obj\time.o: .\APP\led\led.h
 .\obj\time.o: .\APP\key\key.h
 .\obj\time.o: .\Public\usart.h

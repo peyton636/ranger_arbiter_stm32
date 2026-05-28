@@ -93,3 +93,5 @@
 .\obj\main.o: .\Libraries\STM32F4x7_ETH_Driver\inc\stm32f4x7_eth_conf.h
 .\obj\main.o: .\GUI_APP\common.h
 .\obj\main.o: .\GUI\guix.h
+.\obj\main.o: .\APP\distance_sensor\distance_sensor.h
+.\obj\main.o: .\APP\can\can.h

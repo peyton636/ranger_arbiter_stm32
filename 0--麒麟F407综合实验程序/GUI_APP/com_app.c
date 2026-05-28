@@ -8,6 +8,7 @@
 #include "string.h"
 #include "t9input.h"
 #include "stdlib.h"
+#include "stdio.h"
 
 
 
@@ -155,10 +156,11 @@ void CAN_Test(void)//CAN Communication - RANGER MINI 3.0
 			u16 speed = atoi((char*)tedit_speed->text);
 			float angle_deg = atof((char*)tedit_angle->text);
 			float angle_rad = angle_deg * 3.1415926f / 180.0f;
-			
+
+			printf("[CAN TX] ID=0x111 speed=%d mm/s angle=%.1f deg\r\n", speed, angle_deg);
 			CAN1_Send_ControlCmd(speed, angle_rad);
 		}
-		
+
 		res=CAN1_Receive_Msg_WithID(&can_id, rbuf);
 		if(res)
 		{
@@ -170,6 +172,13 @@ void CAN_Test(void)//CAN Communication - RANGER MINI 3.0
 			tempbuf[6+res*3]='\0';
 			tedit_recv->text=tempbuf;
 			edit_draw(tedit_recv);
+
+			printf("[CAN RX] 0x%03X:", (unsigned int)can_id);
+			for(i=0; i<res; i++)
+			{
+				printf(" %02X", rbuf[i]);
+			}
+			printf("\r\n");
 		}	
 	}
 }

@@ -32,7 +32,7 @@ void CAN1_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
 	
 	//CAN单元设置
    	CAN_InitStructure.CAN_TTCM=DISABLE;	//非时间触发通信模式   
-  	CAN_InitStructure.CAN_ABOM=DISABLE;	//软件自动离线管理	  
+  	CAN_InitStructure.CAN_ABOM=ENABLE;	//自动离线管理	  
   	CAN_InitStructure.CAN_AWUM=DISABLE;//睡眠模式通过软件唤醒(清除CAN->MCR的SLEEP位)
   	CAN_InitStructure.CAN_NART=ENABLE;	//使用报文自动传送 
   	CAN_InitStructure.CAN_RFLM=DISABLE;	//报文不锁定,新的覆盖旧的  

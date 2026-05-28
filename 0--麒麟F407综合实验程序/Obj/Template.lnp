@@ -63,6 +63,7 @@
 ".\obj\ov2640.o"
 ".\obj\sccb.o"
 ".\obj\cst716.o"
+".\obj\distance_sensor.o"
 ".\obj\malloc.o"
 ".\obj\diskio.o"
 ".\obj\ff.o"
