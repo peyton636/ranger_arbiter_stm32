@@ -95,3 +95,4 @@
 .\obj\main.o: .\GUI\guix.h
 .\obj\main.o: .\APP\distance_sensor\distance_sensor.h
 .\obj\main.o: .\APP\can\can.h
+.\obj\main.o: .\APP\arbiter\arbiter.h

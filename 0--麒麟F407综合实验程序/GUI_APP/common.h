@@ -32,8 +32,8 @@
 #define PIC_KJ_LOGO_HEIGHT		83
 
 //UI界面背景、前景色
-#define UI_BACKCOLOR			0x000a	//深蓝
-#define UI_FRONTCOLOR			0xFFFF	//白色
+#define UI_BACKCOLOR			WHITE	//白色背景
+#define UI_FRONTCOLOR			BLACK	//黑色文字
 
 
 

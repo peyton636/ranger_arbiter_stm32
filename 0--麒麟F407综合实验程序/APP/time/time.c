@@ -62,15 +62,18 @@ void TIM4_IRQHandler(void)
 //		LED2=!LED2;		
 		OSTime++;
 		DistanceSensor_Process();
+		BEEP_Process();  // 处理蜂鸣器
 
-		can_len = CAN1_Receive_Msg_WithID(&can_id, can_buf);
-		if(can_len)
-		{
-			printf("[CAN RX] 0x%03X:", (unsigned int)can_id);
-			for(ci = 0; ci < can_len; ci++)
-				printf(" %02X", can_buf[ci]);
-			printf("\r\n");
-		}
+		// 注意：CAN 接收已移至主循环 Arbiter_ProcessCANFeedback() 处理
+		// 中断中不再接收和打印，避免串口被刷屏和消息重复消费
+		// can_len = CAN1_Receive_Msg_WithID(&can_id, can_buf);
+		// if(can_len)
+		// {
+		// 	printf("[CAN RX] 0x%03X:", (unsigned int)can_id);
+		// 	for(ci = 0; ci < can_len; ci++)
+		// 		printf(" %02X", can_buf[ci]);
+		// 	printf("\r\n");
+		// }
 
 		can_tick++;
 		if(can_tick % 500 == 0)

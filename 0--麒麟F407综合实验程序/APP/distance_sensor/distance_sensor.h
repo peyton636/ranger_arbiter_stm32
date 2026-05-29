@@ -1,4 +1,4 @@
-#ifndef __DISTANCE_SENSOR_H
+﻿#ifndef __DISTANCE_SENSOR_H
 #define __DISTANCE_SENSOR_H
 
 #include "system.h"
@@ -21,6 +21,9 @@ void DistanceSensor_Process(void);
 DistanceSensor_Data* DistanceSensor_GetData(void);
 u8 DistanceSensor_NewData(void);
 void DistanceSensor_Print(void);
-void USART2_IRQHandler(void);  // UART2中断服务函数声明
+void DistanceSensor_PrintStatus(void);
+u16 DistanceSensor_GetNearestDistance(void);
+void DistanceSensor_UpdateBuzzer(void);
+void USART3_IRQHandler(void);  // UART3中断服务函数声明
 
 #endif
