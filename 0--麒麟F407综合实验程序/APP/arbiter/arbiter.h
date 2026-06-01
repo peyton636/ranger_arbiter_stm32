@@ -110,7 +110,8 @@ typedef enum
 
 // 超声波避障距离阈值（mm）
 #define ARBITER_OBSTACLE_NEAR_MM      30   // 紧急停车距离
-#define ARBITER_OBSTACLE_FAR_MM       80   // 限速距离阈值
+#define ARBITER_OBSTACLE_WARN_MM      50   // 预警区内侧（50~150mm 蜂鸣+限速）
+#define ARBITER_OBSTACLE_FAR_MM       150  // 开始预警/限速距离
 
 // 速度限幅参数（mm/s）
 #define ARBITER_MAX_SPEED_MM_S        1000  // 最大速度
@@ -367,8 +368,23 @@ void Arbiter_PrintChassisFeedback(void);
 
 void Arbiter_GetMotionInfo(u8 *dir, s16 *speed);
 
+const char* Arbiter_MotionDirNameAscii(u8 dir);
+
+// 四轮物理位置速（CAN编号与车体位置不一致，在此统一转换）
+typedef struct {
+	s16 lf;  // 左前
+	s16 rf;  // 右前
+	s16 lr;  // 左后
+	s16 rr;  // 右后
+} ChassisWheelSpeed_t;
+
+void Arbiter_GetWheelSpeedPhysical(ChassisWheelSpeed_t *w);
+
 // 上电初始化时切换到 CAN 指令模式
 void Arbiter_EnableCANMode(void);
+
+// 设置本地运动指令（无 Jetson 时由 main 调用）
+void Arbiter_SetLocalCmd(s16 v, s16 omega);
 
 // 外部声明仲裁器状态（供 LCD 显示使用）
 extern ArbiterState_t arb_state;

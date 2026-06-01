@@ -42,45 +42,45 @@
 #include "stdio.h"
 
 
-//�汾�Ŷ���
+// 汾 Ŷ   
 u8 VERSION[]="HARDWARE:V1.0   SOFTWARE:V1.2";
 
-//�ⲿ�ڴ����(���֧��1M�ֽڴ����)
-//x,y:����
-//fsize:�����С
-//����ֵ:0,�ɹ�;1,ʧ��.
+// ⲿ ڴ    (   ֧  1M ֽڴ    )
+//x,y:    
+//fsize:     С
+//    ֵ:0, ɹ ;1,ʧ  .
 u8 system_exsram_test(u16 x,u16 y,u8 fsize)
 {  
 	u32 i=0;  	  
 	u16 temp=0;	   
-	u16 sval=0;	//�ڵ�ַ0����������	  				   
+	u16 sval=0;	// ڵ ַ0          	  				   
   	LCD_ShowString(x,y,tftlcd_data.width,y+fsize,fsize,"Ex Memory Test:   0KB"); 
-	//ÿ��1K�ֽ�,д��һ������,�ܹ�д��1024������,�պ���1M�ֽ�
+	//ÿ  1K ֽ ,д  һ      , ܹ д  1024      , պ   1M ֽ 
 	for(i=0;i<1024*1024;i+=1024)
 	{
 		FSMC_SRAM_WriteBuffer((u8*)&temp,i,2);
 		temp++;
 	}
-	//���ζ���֮ǰд������,����У��		  
+	//   ζ   ֮ǰд      ,    У  		  
  	for(i=0;i<1024*1024;i+=1024) 
 	{
   		FSMC_SRAM_ReadBuffer((u8*)&temp,i,2);
 		if(i==0)sval=temp;
- 		else if(temp<=sval)break;//������������һ��Ҫȡ����һ�ζ��������ݴ�.	   		   
-		LCD_ShowxNum(x+15*(fsize/2),y,(u16)(temp-sval+1),4,fsize,0);//��ʾ�ڴ�����  
+ 		else if(temp<=sval)break;//            һ  Ҫȡ    һ ζ        ݴ .	   		   
+		LCD_ShowxNum(x+15*(fsize/2),y,(u16)(temp-sval+1),4,fsize,0);//  ʾ ڴ       
  	}
 	if(i>=1024*1024)
 	{
-		LCD_ShowxNum(x+15*(fsize/2),y,i/1024,4,fsize,0);//��ʾ�ڴ�ֵ  		
-		return 0;//�ڴ�����,�ɹ�
+		LCD_ShowxNum(x+15*(fsize/2),y,i/1024,4,fsize,0);//  ʾ ڴ ֵ  		
+		return 0;// ڴ     , ɹ 
 	}
-	return 1;//ʧ��
+	return 1;//ʧ  
 }
 
-//��ʾ������Ϣ
-//x,y:����
-//fsize:�����С
-//x,y:����.err:������Ϣ
+//  ʾ      Ϣ
+//x,y:    
+//fsize:     С
+//x,y:    .err:      Ϣ
 void system_error_show(u16 x,u16 y,u8*err,u8 fsize)
 {
 	FRONT_COLOR=RED;
@@ -93,11 +93,11 @@ void system_error_show(u16 x,u16 y,u8*err,u8 fsize)
 	} 
 }
 
-//��������SPI FLASH(��������Դ��ɾ��),�Կ��ٸ���ϵͳ.
-//x,y:����
-//fsize:�����С
-//x,y:����.err:������Ϣ
-//����ֵ:0,û�в���;1,������
+//        SPI FLASH(        Դ  ɾ  ), Կ  ٸ   ϵͳ.
+//x,y:    
+//fsize:     С
+//x,y:    .err:      Ϣ
+//    ֵ:0,û в   ;1,      
 u8 system_files_erase(u16 x,u16 y,u8 fsize)
 {
 	u8 key;
@@ -110,19 +110,19 @@ u8 system_files_erase(u16 x,u16 y,u8 fsize)
 		if(t==20)LCD_ShowString(x,y+fsize,tftlcd_data.width,tftlcd_data.height,fsize,"KEY0:NO / KEY1:YES");
 		if(t==40)
 		{
-			gui_fill_rectangle(x,y+fsize,tftlcd_data.width,fsize,BLACK);//�����ʾ
+			gui_fill_rectangle(x,y+fsize,tftlcd_data.width,fsize,BLACK);//     ʾ
 			t=0;
 			LED1=!LED1;
 		}
 		key=KEY_Scan(0);
-		if(key==KEY0_PRESS)//������,�û�ȡ����
+		if(key==KEY0_PRESS)//      , û ȡ    
 		{ 
-			gui_fill_rectangle(x,y,tftlcd_data.width,fsize*2,BLACK);//�����ʾ
+			gui_fill_rectangle(x,y,tftlcd_data.width,fsize*2,BLACK);//     ʾ
 			FRONT_COLOR=WHITE;
 			LED1=1;
 			return 0;
 		}
-		if(key==KEY1_PRESS)//Ҫ����,Ҫ��������
+		if(key==KEY1_PRESS)//Ҫ    ,Ҫ        
 		{
 			LED1=1;
 			LCD_ShowString(x,y+fsize,tftlcd_data.width,tftlcd_data.height,fsize,"Erasing SPI FLASH...");
@@ -135,10 +135,10 @@ u8 system_files_erase(u16 x,u16 y,u8 fsize)
 	}
 }
 
-//�ֿ����ȷ����ʾ.
-//x,y:����
-//fsize:�����С 
-//����ֵ:0,����Ҫ����;1,ȷ��Ҫ����
+// ֿ    ȷ    ʾ.
+//x,y:    
+//fsize:     С 
+//    ֵ:0,    Ҫ    ;1,ȷ  Ҫ    
 u8 system_font_update_confirm(u16 x,u16 y,u8 fsize)
 {
 	u8 key;
@@ -152,21 +152,21 @@ u8 system_font_update_confirm(u16 x,u16 y,u8 fsize)
 		if(t==20)LCD_ShowString(x,y+fsize,tftlcd_data.width,tftlcd_data.height,fsize,"KEY1:NO / KEY0:YES");
 		if(t==40)
 		{
-			LCD_Fill(x,y+fsize,tftlcd_data.width,y+fsize+fsize,BLACK);//�����ʾ
+			LCD_Fill(x,y+fsize,tftlcd_data.width,y+fsize+fsize,BLACK);//     ʾ
 			t=0;
 		}
 		key=KEY_Scan(0);
-		if(key==KEY1_PRESS)break;//������ 
-		if(key==KEY0_PRESS){res=1;break;}//Ҫ���� 
+		if(key==KEY1_PRESS)break;//       
+		if(key==KEY0_PRESS){res=1;break;}//Ҫ     
 		delay_ms(10);
 	}
-	LCD_Fill(x,y,tftlcd_data.width,y+2*fsize,BLACK);//�����ʾ
+	LCD_Fill(x,y,tftlcd_data.width,y+2*fsize,BLACK);//     ʾ
 	FRONT_COLOR=WHITE;
 	return res;
 }
 
 
-//Ӳ�����
+//Ӳ     
 void Hardware_Check(void)
 {
 	u16 okoffset=162;
@@ -178,32 +178,32 @@ void Hardware_Check(void)
 	u8 *stastr=0;
 	u8 fsize;
 	
-REINIT://���³�ʼ��
-	SysTick_Init(168);				//��ʱ��ʼ�� 
-	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);  //�ж����ȼ����� ��2��
-	USART1_Init(115200);		//��ʼ�����ڲ�����Ϊ115200 
- 	LED_Init();					//��ʼ��LED 
- 	TFTLCD_Init();					//LCD��ʼ��    
- 	BEEP_Init();				//��������ʼ��
- 	KEY_Init();					//������ʼ�� 
-	FSMC_SRAM_Init();			//��ʼ���ⲿSRAM
- 	AT24CXX_Init();    		//EEPROM��ʼ��
-	EN25QXX_Init();				//��ʼ��W25Q128
- 	Lsens_Init();				//��ʼ������������
-	ADC_Temp_Init();			//��ʼ���ڲ��¶ȴ����� 
-	my_mem_init(SRAMIN);		//��ʼ���ڲ��ڴ��
-	my_mem_init(SRAMCCM);		//��ʼ��CCM�ڴ�� 
+REINIT://   ³ ʼ  
+	SysTick_Init(168);				//  ʱ  ʼ   
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);  // ж    ȼ        2  
+	USART1_Init(115200);		//  ʼ     ڲ     Ϊ115200 
+ 	LED_Init();					//  ʼ  LED 
+ 	TFTLCD_Init();					//LCD  ʼ      
+ 	BEEP_Init();				//        ʼ  
+ 	KEY_Init();					//      ʼ   
+	FSMC_SRAM_Init();			//  ʼ   ⲿSRAM
+ 	AT24CXX_Init();    		//EEPROM  ʼ  
+	EN25QXX_Init();				//  ʼ  W25Q128
+ 	Lsens_Init();				//  ʼ            
+	ADC_Temp_Init();			//  ʼ   ڲ  ¶ȴ      
+	my_mem_init(SRAMIN);		//  ʼ   ڲ  ڴ  
+	my_mem_init(SRAMCCM);		//  ʼ  CCM ڴ   
 	TP_Init();
-	piclib_init();				//piclib��ʼ��
-	gui_init();	  				//gui��ʼ��
-	FATFS_Init();				//Ϊfatfs�ر��������ڴ�
+	piclib_init();				//piclib  ʼ  
+	gui_init();	  				//gui  ʼ  
+	FATFS_Init();				//Ϊfatfs ر        ڴ 
 	
-//	LOGO_Display();//����LOGO
-	LCD_Clear(BLACK);			//����
+//	LOGO_Display();//    LOGO
+	LCD_Clear(BLACK);			//    
 	FRONT_COLOR=WHITE;
 	BACK_COLOR=BLACK;
 	j=0;
-	//��ʾ��Ȩ��Ϣ
+	//  ʾ  Ȩ  Ϣ
 	ypos=2;
 	if(tftlcd_data.width<=272)
 	{
@@ -221,166 +221,166 @@ REINIT://���³�ʼ��
 	LCD_ShowString(5,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,"---PRECHIN---");
 	LCD_ShowString(5,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,VERSION);
 	
-	//��ʼӲ������ʼ��
-	WM8978_Init();//��ֹ�����ҽ�
-	WM8978_HPvol_Set(0,0);//�رն������
-	WM8978_SPKvol_Set(0);//�ر��������
-	LED1=0;LED2=0;				//ͬʱ��������LED
+	//  ʼӲ      ʼ  
+	WM8978_Init();//  ֹ     ҽ 
+	WM8978_HPvol_Set(0,0);// رն      
+	WM8978_SPKvol_Set(0);// ر        
+	LED1=0;LED2=0;				//ͬʱ        LED
 	LCD_ShowString(5,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "CPU:STM32F407ZGT6 168Mhz");
 	LCD_ShowString(5,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "FLASH:1024KB  SRAM:192KB");	
 	if(system_exsram_test(5,ypos+fsize*j,fsize))
 		system_error_show(5,ypos+fsize*j++,"EX Memory Error!",fsize);
 	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,"OK");			 
-	my_mem_init(SRAMEX);		//��ʼ���ⲿ�ڴ��,��������ڴ���֮��
-	//�ⲿFLASH���
-	if((EN25QXX_ReadID()==0x00)||(EN25QXX_ReadID()==0xFF))//��ⲻ��EN25QXX
+	my_mem_init(SRAMEX);		//  ʼ   ⲿ ڴ  ,        ڴ   ֮  
+	// ⲿFLASH   
+	if((EN25QXX_ReadID()==0x00)||(EN25QXX_ReadID()==0xFF))//  ⲻ  EN25QXX
 	{	 
 		system_error_show(5,ypos+fsize*j++,"Ex Flash Error!!",fsize); 
-	}else temp=16*1024;	//16M�ֽڴ�С
+	}else temp=16*1024;	//16M ֽڴ С
 	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Ex Flash:     KB");			   
-	LCD_ShowxNum(5+9*(fsize/2),ypos+fsize*j,temp,5,fsize,0);//��ʾflash��С  
+	LCD_ShowxNum(5+9*(fsize/2),ypos+fsize*j,temp,5,fsize,0);//  ʾflash  С  
 	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");
-	//����Ƿ���Ҫ����SPI FLASH?
+	//    Ƿ   Ҫ    SPI FLASH?
 	res=KEY_Scan(1);//
 	if(res==KEY_UP_PRESS)
 	{
 		res=system_files_erase(5,ypos+fsize*j,fsize);
 		if(res)goto REINIT; 
 	}
-    //RTC���
+    //RTC   
   	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "RTC Check...");			   
- 	if(RTC_Config())system_error_show(5,ypos+fsize*(j+1),"RTC Error!",fsize);//RTC���
+ 	if(RTC_Config())system_error_show(5,ypos+fsize*(j+1),"RTC Error!",fsize);//RTC   
 	else 
 	{
-		RTC_Set_WakeUp(RTC_WakeUpClock_CK_SPRE_16bits,0);//����WAKE UP�ж�,1�����ж�һ��
-		RTC_GetTime(RTC_Format_BIN,&RTC_TimeStruct);//�õ���ǰʱ��
-		RTC_GetDate(RTC_Format_BIN,&RTC_DateStruct);//�õ���ǰ����
+		RTC_Set_WakeUp(RTC_WakeUpClock_CK_SPRE_16bits,0);//    WAKE UP ж ,1     ж һ  
+		RTC_GetTime(RTC_Format_BIN,&RTC_TimeStruct);// õ   ǰʱ  
+		RTC_GetDate(RTC_Format_BIN,&RTC_DateStruct);// õ   ǰ    
 		LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");			   
 	}
-	//����SPI FLASH���ļ�ϵͳ
-	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "FATFS Check...");//FATFS���			   
-  	f_mount(fs[0],"0:",1); 		//����SD��  
-  	f_mount(fs[1],"1:",1); 		//���ع���FLASH. 
+	//    SPI FLASH   ļ ϵͳ
+	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "FATFS Check...");//FATFS   			   
+  	f_mount(fs[0],"0:",1); 		//    SD    
+  	f_mount(fs[1],"1:",1); 		//   ع   FLASH. 
  	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");			   
-	//SD�����
-	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "SD Card:     MB");//FATFS���
+	//SD     
+	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "SD Card:     MB");//FATFS   
 	temp=0;	
  	do
 	{
 		temp++;
- 		res=fatfs_getfree("0:",&dtsize,&dfsize);//�õ�SD��ʣ��������������
+ 		res=fatfs_getfree("0:",&dtsize,&dfsize);// õ SD  ʣ              
 		delay_ms(200);		   
-	}while(res&&temp<5);//�������5��
- 	if(res==0)//�õ���������
+	}while(res&&temp<5);//       5  
+ 	if(res==0)// õ         
 	{ 
-		gui_phy.memdevflag|=1<<0;	//����SD����λ.
-		temp=dtsize>>10;//��λת��ΪMB
+		gui_phy.memdevflag|=1<<0;	//    SD    λ.
+		temp=dtsize>>10;//  λת  ΪMB
 		stastr="OK";
  	}else 
 	{
- 		temp=0;//������,��λΪ0
+ 		temp=0;//      ,  λΪ0
 		stastr="ERROR";
 	}
- 	LCD_ShowxNum(5+8*(fsize/2),ypos+fsize*j,temp,5,fsize,0);					//��ʾSD��������С
-	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,stastr);	//SD��״̬			   
-	//W25Q128���,����������ļ�ϵͳ,���ȴ���.
+ 	LCD_ShowxNum(5+8*(fsize/2),ypos+fsize*j,temp,5,fsize,0);					//  ʾSD        С
+	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,stastr);	//SD  ״̬			   
+	//W25Q128   ,          ļ ϵͳ,   ȴ   .
 	temp=0;	
  	do
 	{
 		temp++;
- 		res=fatfs_getfree("1:",&dtsize,&dfsize);//�õ�FLASHʣ��������������
+ 		res=fatfs_getfree("1:",&dtsize,&dfsize);// õ FLASHʣ              
 		delay_ms(200);		   
-	}while(res&&temp<20);//�������20��		  
-	if(res==0X0D)//�ļ�ϵͳ������
+	}while(res&&temp<20);//       20  		  
+	if(res==0X0D)// ļ ϵͳ      
 	{
-		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk Formatting...");	//��ʽ��FLASH
-		res=f_mkfs("1:",1,4096);//��ʽ��FLASH,1,�̷�;1,����Ҫ����,8����Ϊ1����
+		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk Formatting...");	//  ʽ  FLASH
+		res=f_mkfs("1:",1,4096);//  ʽ  FLASH,1, ̷ ;1,    Ҫ    ,8    Ϊ1    
 		if(res==0)
 		{
-			f_setlabel((const TCHAR *)"1:PRECHIN");	//����Flash���̵�����Ϊ��PRECHIN
-			LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");//��־��ʽ���ɹ�
- 			res=fatfs_getfree("1:",&dtsize,&dfsize);//���»�ȡ����
+			f_setlabel((const TCHAR *)"1:PRECHIN");	//    Flash   ̵     Ϊ  PRECHIN
+			LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");//  ־  ʽ   ɹ 
+ 			res=fatfs_getfree("1:",&dtsize,&dfsize);//   » ȡ    
 		}
 	}   
-	if(res==0)//�õ�FLASH��ʣ��������������
+	if(res==0)// õ FLASH  ʣ              
 	{
-		gui_phy.memdevflag|=1<<1;	//����SPI FLASH��λ.
-		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk:     KB");//FATFS���			   
+		gui_phy.memdevflag|=1<<1;	//    SPI FLASH  λ.
+		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk:     KB");//FATFS   			   
 		temp=dtsize; 	   
- 	}else system_error_show(5,ypos+fsize*(j+1),"Flash Fat Error!",fsize);	//flash �ļ�ϵͳ���� 
- 	LCD_ShowxNum(5+11*(fsize/2),ypos+fsize*j,temp,5,fsize,0);						//��ʾFLASH������С
-	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,"OK");			//FLASH��״̬	
-	//TPAD���		 
+ 	}else system_error_show(5,ypos+fsize*(j+1),"Flash Fat Error!",fsize);	//flash  ļ ϵͳ     
+ 	LCD_ShowxNum(5+11*(fsize/2),ypos+fsize*j,temp,5,fsize,0);						//  ʾFLASH      С
+	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,"OK");			//FLASH  ״̬	
+	//TPAD   		 
  	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "TPAD Check...");			   
-// 	if(Touch_Key_Init(4))system_error_show(5,ypos+fsize*(j+1),"TPAD Error!",fsize);//�����������
+// 	if(Touch_Key_Init(4))system_error_show(5,ypos+fsize*(j+1),"TPAD Error!",fsize);//           
 //	else LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK"); 
 	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK"); 
-	//24C02���
+	//24C02   
    	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "24C02 Check...");			   
- 	if(AT24CXX_Check())system_error_show(5,ypos+fsize*(j+1),"24C02 Error!",fsize);//24C02���
+ 	if(AT24CXX_Check())system_error_show(5,ypos+fsize*(j+1),"24C02 Error!",fsize);//24C02   
 	else LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");  
-	//MPU6050��� 
+	//MPU6050    
    	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "MPU6050 Check...");			   
  	if(MPU6050_Init())system_error_show(5,ypos+fsize*j++,"MPU6050 Error!",fsize);
 	else LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");
-	//WM8978���			   
+	//WM8978   			   
  	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "WM8978 Check...");			   
- 	if(WM8978_Init())system_error_show(5,ypos+fsize*(j+1),"WM8978 Error!",fsize);//WM8978���
+ 	if(WM8978_Init())system_error_show(5,ypos+fsize*(j+1),"WM8978 Error!",fsize);//WM8978   
 	else 
 	{
 		LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");	
-		WM8978_HPvol_Set(0,0);//�رն������
-		WM8978_SPKvol_Set(0);//�ر��������
+		WM8978_HPvol_Set(0,0);// رն      
+		WM8978_SPKvol_Set(0);// ر        
   	}
-//	//LAN8720���   
+//	//LAN8720      
 //	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "LAN8720 Check...");			   
-// 	if(LAN8720_Init())system_error_show(5,ypos+fsize*(j+1),"LAN8720 Error!",fsize);//LAN8720���
+// 	if(LAN8720_Init())system_error_show(5,ypos+fsize*(j+1),"LAN8720 Error!",fsize);//LAN8720   
 //	else LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK"); 
-//	LAN8720_RST=0;		//��λLAN8720	
-	//�ֿ���								    
+//	LAN8720_RST=0;		//  λLAN8720	
+	// ֿ   								    
    	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Font Check...");
-	res=KEY_Scan(1);//��ⰴ��
-	if(res==KEY1_PRESS)//���£�ȷ��
+	res=KEY_Scan(1);//  ⰴ  
+	if(res==KEY1_PRESS)//   £ ȷ  
 	{
 		res=system_font_update_confirm(5,ypos+fsize*(j+1),fsize);
 	}else res=0;
-	if(font_init()||(res==1))//�������,������岻����/ǿ�Ƹ���,������ֿ�	
+	if(font_init()||(res==1))//       ,      岻    /ǿ Ƹ   ,      ֿ 	
 	{
-		res=0;//������Ч
- 		if(update_font(5,ypos+fsize*j,fsize,"0:")!=0)//��SD������
+		res=0;//      Ч
+ 		if(update_font(5,ypos+fsize*j,fsize,"0:")!=0)//  SD      
 		{
- 			system_error_show(5,ypos+fsize*(j+1),"Font Error!",fsize);	//�������
+ 			system_error_show(5,ypos+fsize*(j+1),"Font Error!",fsize);	//       
 		}
 		else 
 		{
 			ypos=0;
 			goto REINIT;
 		}
-		LCD_Fill(5,ypos+fsize*j,tftlcd_data.width,ypos+fsize*(j+1),BLACK);//����ɫ
+		LCD_Fill(5,ypos+fsize*j,tftlcd_data.width,ypos+fsize*(j+1),BLACK);//    ɫ
     	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Font Check...");			   
  	} 
-	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");//�ֿ���OK
-	//��������� 
+	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");// ֿ   OK
+	//          
  	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Touch Check...");			   
-	res=KEY_Scan(1);//��ⰴ��			   
-	if(TP_Init()||(res==KEY0_PRESS&&(tp_dev.touchtype&0X80)==0))//�и���/������KEY0�Ҳ��ǵ�����,ִ��У׼ 	
+	res=KEY_Scan(1);//  ⰴ  			   
+	if(TP_Init()||(res==KEY0_PRESS&&(tp_dev.touchtype&0X80)==0))// и   /      KEY0 Ҳ  ǵ     ,ִ  У׼ 	
 	{
 		if(res==KEY0_PRESS)TP_Adjust();
-		res=0;//������Ч
-		goto REINIT;				//���¿�ʼ��ʼ��
+		res=0;//      Ч
+		goto REINIT;				//   ¿ ʼ  ʼ  
 	}
-	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");//���������OK
+	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");//         OK
    	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "SYSTEM Starting...");  
-	//�ر�LED
+	// ر LED
 	LED1=1;LED2=1;
-	//�������̽�,��ʾ��������
+	//       ̽ ,  ʾ        
 	BEEP=1;
 	delay_ms(100);
 	BEEP=0; 
 	delay_ms(500);
-	TIM4_Init(200,8399);		//��ʱ20ms	
-//	TIM3_Init(500,8399);		//��ʱ50ms
-	TIM2_Init(1000,8399);		//10Khz����Ƶ��,100ms�ж�
+	TIM4_Init(200,8399);		//  ʱ20ms	
+//	TIM3_Init(500,8399);		//  ʱ50ms
+	TIM2_Init(1000,8399);		//10Khz    Ƶ  ,100ms ж 
 //	delay_ms(1000);
 //	delay_ms(1000);
 }
@@ -423,11 +423,80 @@ void SensorData_ShowScreen(void);
 #define UI_Y_WFL      182
 #define UI_Y_WRL      198
 #define UI_Y_BATT     214
+#define UI_Y_BEEP     230
 #define UI_X_VAL      45
 #define UI_CAN_LCD_DIV 30   // 约300ms刷新底盘区，减轻串口/LCD负担
 #define UI_LINE_W     230   // 固定行宽，避免数字长短不一跳动
+#define CRUISE_SPEED_MM_S  300   // 无Jetson时默认前进速度 mm/s
+#define ARBITER_CAN_DIV    2     // 主循环10ms×2=20ms发一次0x111
 
 static u8 sensor_ui_inited = 0;
+static u8 g_beep_dist_enable = 1;   // 距离蜂鸣开关：1=开 0=关，KEY1切换
+static u16 g_nearest_dist_mm = 0xFFFF;
+static u8 g_beep_ui_dirty = 0;
+
+// KEY1 切换距离蜂鸣开关
+static void Beep_ToggleSwitch(void)
+{
+	u8 key;
+
+	key = KEY_Scan(0);
+	if(key == KEY1_PRESS)
+	{
+		g_beep_dist_enable = !g_beep_dist_enable;
+		if(!g_beep_dist_enable)
+			BEEP_SetVolume(0);
+		g_beep_ui_dirty = 1;
+		printf("[BEEP] Distance alert %s (KEY1 toggle)\r\n",
+			g_beep_dist_enable ? "ON" : "OFF");
+		delay_ms(200);
+	}
+}
+
+// 根据最近距离更新蜂鸣器音量（main 内实现，受 g_beep_dist_enable 控制）
+static void Beep_UpdateByDistance(u16 nearest_mm)
+{
+	u8 vol;
+
+	if(!g_beep_dist_enable || nearest_mm == 0xFFFF)
+	{
+		BEEP_SetVolume(0);
+		return;
+	}
+
+	if(nearest_mm >= ARBITER_OBSTACLE_FAR_MM)
+	{
+		vol = 0;
+	}
+	else if(nearest_mm < ARBITER_OBSTACLE_WARN_MM)
+	{
+		vol = 100;
+	}
+	else
+	{
+		vol = 20 + (u8)((ARBITER_OBSTACLE_FAR_MM - nearest_mm) * 60 /
+			(ARBITER_OBSTACLE_FAR_MM - ARBITER_OBSTACLE_WARN_MM));
+	}
+
+	BEEP_SetVolume(vol);
+}
+
+// 距离避障运动控制：更新障碍物距离 + 仲裁 + CAN下发
+static void Motion_ControlByDistance(void)
+{
+	static u16 can_send_div = 0;
+
+	Arbiter_SetLocalCmd(CRUISE_SPEED_MM_S, 0);
+	Arbiter_SetObstacleDistance(g_nearest_dist_mm);
+	Arbiter_Process();
+
+	can_send_div++;
+	if(can_send_div >= ARBITER_CAN_DIV)
+	{
+		can_send_div = 0;
+		Arbiter_SendToSTM32A();
+	}
+}
 
 // 局部擦除固定宽度区域后重绘（中文）
 static void SensorUI_UpdateLineGBK(u16 y, const char *text)
@@ -467,6 +536,14 @@ static void SensorUI_DrawStatic(void)
 	LCD_ShowString(UI_X, UI_Y_CHASSIS, tftlcd_data.width, tftlcd_data.height, UI_FS, "--- Chassis CAN ---");
 
 	sensor_ui_inited = 1;
+}
+
+static void SensorUI_UpdateBeepStatus(void)
+{
+	if(g_beep_dist_enable)
+		SensorUI_UpdateLine(UI_Y_BEEP, "Beep:ON  KEY1=OFF");
+	else
+		SensorUI_UpdateLine(UI_Y_BEEP, "Beep:OFF KEY1=ON ");
 }
 
 // 局部更新计数
@@ -530,23 +607,20 @@ static void Chassis_UpdateMotionLine(void)
 	SensorUI_UpdateLineGBK(UI_Y_MOTION, buf);
 }
 
-// 局部更新四轮速（固定宽度：左前/右前、左后/右后）
+// 局部更新四轮速（固定宽度，已映射到真实车体位置）
 static void Chassis_UpdateWheelLines(void)
 {
 	char buf[48];
-	s16 lf, rf, lr, rr;
+	ChassisWheelSpeed_t ws;
 
-	lf = arb_state.wheel_speed.wheel1;
-	rf = arb_state.wheel_speed.wheel2;
-	lr = arb_state.wheel_speed.wheel3;
-	rr = arb_state.wheel_speed.wheel4;
+	Arbiter_GetWheelSpeedPhysical(&ws);
 
 	sprintf(buf, "\xD7\xF3\xC7\xB0:%4d \xD3\xD2\xC7\xB0:%4d",
-		(int)lf, (int)rf);
+		(int)ws.lf, (int)ws.rf);
 	SensorUI_UpdateLineGBK(UI_Y_WFL, buf);
 
 	sprintf(buf, "\xD7\xF3\xBA\xF3:%4d \xD3\xD2\xBA\xF3:%4d",
-		(int)lr, (int)rr);
+		(int)ws.lr, (int)ws.rr);
 	SensorUI_UpdateLineGBK(UI_Y_WRL, buf);
 }
 
@@ -574,8 +648,7 @@ static void Chassis_UpdateOnLCD(void)
 			(int)arb_state.bms_data.soc,
 			(int)(bms_v / 10),
 			(int)(bms_v % 10));
-		LCD_Fill(UI_X, UI_Y_BATT + UI_FS, UI_X + UI_LINE_W, UI_Y_BATT + UI_FS * 2 - 1, BLACK);
-		LCD_ShowString(UI_X, UI_Y_BATT + UI_FS, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)buf);
+		SensorUI_UpdateLine(UI_Y_BEEP + UI_FS, buf);
 	}
 }
 
@@ -587,8 +660,11 @@ int main()
 	DistanceSensor_Init();
 	CAN1_Init_RangerMini();
 	Arbiter_Init();
+	Arbiter_EnableCANMode();
 	printf("[CAN] Init done, MCR=0x%08X MSR=0x%08X\r\n",
 		(unsigned int)CAN1->MCR, (unsigned int)CAN1->MSR);
+	printf("[MOTION] Dist ctrl ON, cruise=%d mm/s, beep=%s (KEY1 toggle)\r\n",
+		CRUISE_SPEED_MM_S, g_beep_dist_enable ? "ON" : "OFF");
 	
 	// 确保 LCD 初始化完成
 	delay_ms(100);
@@ -612,13 +688,13 @@ int main()
 void SensorData_ShowScreen(void)
 {
 	DistanceSensor_Data *ds = DistanceSensor_GetData();
-	u8 i;
-	u8 buf[8];
 	static u32 cnt = 0;
 	static u16 can_lcd_div = 0;
 	u8 sensor_updated = 0;
 	u8 can_updated = 0;
 	u8 can_lcd_due = 0;
+
+	Beep_ToggleSwitch();
 
 	while(CAN_MessagePending(CAN1, CAN_FIFO0))
 	{
@@ -627,6 +703,14 @@ void SensorData_ShowScreen(void)
 	}
 
 	sensor_updated = DistanceSensor_NewData();
+	if(sensor_updated && ds->valid)
+	{
+		g_nearest_dist_mm = DistanceSensor_GetNearestDistance();
+		Beep_UpdateByDistance(g_nearest_dist_mm);
+	}
+
+	Motion_ControlByDistance();
+	Beep_UpdateByDistance(g_nearest_dist_mm);
 
 	if(can_updated)
 	{
@@ -643,7 +727,14 @@ void SensorData_ShowScreen(void)
 		SensorUI_DrawStatic();
 		SensorUI_UpdateCount(0);
 		SensorUI_UpdateDistances(ds);
+		SensorUI_UpdateBeepStatus();
 		Chassis_UpdateOnLCD();
+	}
+
+	if(g_beep_ui_dirty)
+	{
+		SensorUI_UpdateBeepStatus();
+		g_beep_ui_dirty = 0;
 	}
 
 	if(sensor_updated)
@@ -652,24 +743,6 @@ void SensorData_ShowScreen(void)
 		DistanceSensor_Print();
 		SensorUI_UpdateCount(cnt);
 		SensorUI_UpdateDistances(ds);
-
-		if(ds->valid)
-		{
-			for(i = 0; i < 4; i++)
-			{
-				if(ds->error[i] == DS_ERR_NONE)
-				{
-					buf[i * 2] = (ds->dist[i] >> 8) & 0xFF;
-					buf[i * 2 + 1] = ds->dist[i] & 0xFF;
-				}
-				else
-				{
-					buf[i * 2] = 0xFF;
-					buf[i * 2 + 1] = 0xFF;
-				}
-			}
-			CAN1_Send_Msg_WithID(0x111, buf, 8);
-		}
 	}
 
 	if(can_lcd_due)

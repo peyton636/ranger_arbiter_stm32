@@ -144,6 +144,14 @@ u8 Arbiter_ParseJetsonCmd(u8* frame, u8 len)
 *******************************************************************************/
 void Arbiter_SetObstacleDistance(u16 dist_mm)
 {
+	/* 65533/0xFFFF 为无效读数，不参与避障 */
+	if(dist_mm >= 60000)
+	{
+		arb_state.nearest_dist = 0xFFFF;
+		arb_state.obstacle_detected = 0;
+		return;
+	}
+
 	arb_state.nearest_dist = dist_mm;
 	
 	// 判断是否有障碍物
@@ -291,7 +299,7 @@ static void Arbiter_ProcessSpeedLimitMode(void)
 	}
 	else
 	{
-		// 线性插值：30mm=0%, 80mm=100%
+		// 线性插值：30mm=0%, 150mm=100%
 		ratio = (float)(arb_state.nearest_dist - ARBITER_OBSTACLE_NEAR_MM) / 
 		        (ARBITER_OBSTACLE_FAR_MM - ARBITER_OBSTACLE_NEAR_MM);
 	}
@@ -821,20 +829,19 @@ static s16 Chassis_ParseS16BE(u8 hi, u8 lo)
 void Arbiter_GetMotionInfo(u8 *dir, s16 *speed)
 {
 	s16 v, spin;
-	s16 lf, rf, lr, rr, left, right, wdiff, avg_ws;
+	ChassisWheelSpeed_t ws;
+	s16 left, right, wdiff, avg_ws;
 	u8 motion_dir = CHASSIS_MOTION_STOP;
 	s16 motion_speed = 0;
 
 	v = arb_state.motion_fb.linear_speed;
 	spin = arb_state.motion_fb.spin_speed;
-	lf = arb_state.wheel_speed.wheel1;
-	rf = arb_state.wheel_speed.wheel2;
-	lr = arb_state.wheel_speed.wheel3;
-	rr = arb_state.wheel_speed.wheel4;
-	left = (lf + lr) / 2;
-	right = (rf + rr) / 2;
+	Arbiter_GetWheelSpeedPhysical(&ws);
+	left = (ws.lf + ws.lr) / 2;
+	right = (ws.rf + ws.rr) / 2;
 	wdiff = left - right;
-	avg_ws = (Chassis_MotionAbs(lf) + Chassis_MotionAbs(rf) + Chassis_MotionAbs(lr) + Chassis_MotionAbs(rr)) / 4;
+	avg_ws = (Chassis_MotionAbs(ws.lf) + Chassis_MotionAbs(ws.rf) +
+	          Chassis_MotionAbs(ws.lr) + Chassis_MotionAbs(ws.rr)) / 4;
 
 	if(arb_state.motion_mode_fb.motion_mode == CAN_MOTION_SPIN ||
 	   (Chassis_MotionAbs(spin) > CHASSIS_SPIN_DEAD && Chassis_MotionAbs(v) < 50))
@@ -897,6 +904,21 @@ const char* Arbiter_MotionDirNameAscii(u8 dir)
 }
 
 /*******************************************************************************
+* 函 数 名         : Arbiter_GetWheelSpeedPhysical
+* 功能描述		   : CAN轮编号 -> 车体物理位置
+* 映    射         : CAN W1=左后  W2=左前  W3=右前  W4=右后
+*******************************************************************************/
+void Arbiter_GetWheelSpeedPhysical(ChassisWheelSpeed_t *w)
+{
+	if(!w) return;
+
+	w->lr = arb_state.wheel_speed.wheel1;
+	w->lf = arb_state.wheel_speed.wheel2;
+	w->rf = arb_state.wheel_speed.wheel3;
+	w->rr = arb_state.wheel_speed.wheel4;
+}
+
+/*******************************************************************************
 * 函 数 名         : Arbiter_PrintChassisFeedback
 * 功能描述		   : 打印底盘 CAN 反馈到串口
 *******************************************************************************/
@@ -904,21 +926,19 @@ void Arbiter_PrintChassisFeedback(void)
 {
 	u8 motion_dir;
 	s16 motion_speed;
-	u16 bms_v;
+	ChassisWheelSpeed_t ws;
 
 	Arbiter_GetMotionInfo(&motion_dir, &motion_speed);
-	bms_v = arb_state.bms_data.voltage;
-	if(bms_v > 1000)
-		bms_v = bms_v / 10;
+	Arbiter_GetWheelSpeedPhysical(&ws);
 
-	printf("[CAN FB] DIR=%s SPD=%d V=%d LF=%d RF=%d LR=%d RR=%d BAT=%d.%dV\r\n",
+	printf("[CAN FB] DIR=%s SPD=%d CMD=%d MODE=%s\r\n",
 		Arbiter_MotionDirNameAscii(motion_dir),
 		(int)motion_speed,
+		(int)arb_state.output.v,
+		ARBITER_MODE_NAMES[arb_state.current_mode]);
+	printf("[CAN FB] V=%d LF=%d RF=%d LR=%d RR=%d BAT=%d.%dV\r\n",
 		(int)arb_state.motion_fb.linear_speed,
-		(int)arb_state.wheel_speed.wheel1,
-		(int)arb_state.wheel_speed.wheel2,
-		(int)arb_state.wheel_speed.wheel3,
-		(int)arb_state.wheel_speed.wheel4,
+		(int)ws.lf, (int)ws.rf, (int)ws.lr, (int)ws.rr,
 		(int)(arb_state.sys_status.battery_voltage / 10),
 		(int)(arb_state.sys_status.battery_voltage % 10));
 }
@@ -1029,4 +1049,17 @@ void Arbiter_EnableCANMode(void)
 	Arbiter_SetMotionMode(CAN_MOTION_ACKERMANN);
 	
 	printf("[Arbiter] CAN mode enabled, ready to control chassis\r\n");
+}
+
+/*******************************************************************************
+* 函 数 名         : Arbiter_SetLocalCmd
+* 功能描述		   : 设置本地运动指令（main 循环调用，无 Jetson 时使用）
+*******************************************************************************/
+void Arbiter_SetLocalCmd(s16 v, s16 omega)
+{
+	arb_state.jetson_cmd.v = v;
+	arb_state.jetson_cmd.omega = omega;
+	arb_state.jetson_cmd.heartbeat = JETSON_HEARTBEAT_VAL;
+	arb_state.jetson_cmd.valid = 1;
+	Arbiter_UpdateHeartbeat();
 }

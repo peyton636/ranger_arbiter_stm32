@@ -1,5 +1,5 @@
 Dependencies for Project 'Template', Target 'Target 1': (DO NOT MODIFY !)
-F (.\User\main.c)(0x6A1957D2)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\main.o --omf_browse .\obj\main.crf --depend .\obj\main.d)
+F (.\User\main.c)(0x6A1D2964)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\main.o --omf_browse .\obj\main.crf --depend .\obj\main.d)
 I (.\Public\system.h)(0x5DCCF34E)
 I (.\User\stm32f4xx.h)(0x57AEE8B2)
 I (.\Libraries\CMSIS\core_cm4.h)(0x5559F3AE)
@@ -90,11 +90,11 @@ I (.\LwIP\lwip_app\lwip_comm\lwip_comm.h)(0x5ECE2150)
 I (.\APP\lan8720\lan8720.h)(0x5E7DC642)
 I (.\Libraries\STM32F4x7_ETH_Driver\inc\stm32f4x7_eth.h)(0x5444D328)
 I (.\Libraries\STM32F4x7_ETH_Driver\inc\stm32f4x7_eth_conf.h)(0x55A09624)
-I (.\GUI_APP\common.h)(0x6A17F171)
+I (.\GUI_APP\common.h)(0x6A1D2964)
 I (.\GUI\guix.h)(0x5E847EA2)
-I (.\APP\distance_sensor\distance_sensor.h)(0x6A19436E)
+I (.\APP\distance_sensor\distance_sensor.h)(0x6A1D2964)
 I (.\APP\can\can.h)(0x6A166550)
-I (.\APP\arbiter\arbiter.h)(0x6A1955C2)
+I (.\APP\arbiter\arbiter.h)(0x6A196470)
 F (.\User\stm32f4xx_it.c)(0x57AEE5B6)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\stm32f4xx_it.o --omf_browse .\obj\stm32f4xx_it.crf --depend .\obj\stm32f4xx_it.d)
 I (User\stm32f4xx_it.h)(0x5559F376)
 I (User\stm32f4xx.h)(0x57AEE8B2)
@@ -1392,7 +1392,7 @@ I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_can.h)(0x555C4782)
 I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h)(0x555C4782)
 I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h)(0x555C4782)
 I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h)(0x555C4782)
-I (.\APP\distance_sensor\distance_sensor.h)(0x6A19436E)
+I (.\APP\distance_sensor\distance_sensor.h)(0x6A1D2964)
 I (.\APP\can\can.h)(0x6A166550)
 I (.\APP\led\led.h)(0x5E9FEC00)
 I (.\APP\key\key.h)(0x5E7DB382)
@@ -1466,7 +1466,7 @@ I (.\APP\led\led.h)(0x5E9FEC00)
 I (.\Public\usart.h)(0x5DCCCD0E)
 I (D:\Keil5\ARM\ARMCC\include\stdio.h)(0x588B8344)
 I (.\APP\tftlcd\tftlcd.h)(0x64D19450)
-I (.\GUI_APP\common.h)(0x6A17F171)
+I (.\GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
 I (.\GUI\guix.h)(0x5E847EA2)
 I (.\Malloc\malloc.h)(0x5FE16AF0)
@@ -2490,8 +2490,8 @@ I (.\Public\usart.h)(0x5DCCCD0E)
 I (D:\Keil5\ARM\ARMCC\include\stdio.h)(0x588B8344)
 I (.\Public\SysTick.h)(0x57BD4362)
 I (D:\Keil5\ARM\ARMCC\include\string.h)(0x588B8344)
-F (.\APP\distance_sensor\distance_sensor.c)(0x6A1952B6)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\distance_sensor.o --omf_browse .\obj\distance_sensor.crf --depend .\obj\distance_sensor.d)
-I (APP\distance_sensor\distance_sensor.h)(0x6A19436E)
+F (.\APP\distance_sensor\distance_sensor.c)(0x6A1D2964)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\distance_sensor.o --omf_browse .\obj\distance_sensor.crf --depend .\obj\distance_sensor.d)
+I (APP\distance_sensor\distance_sensor.h)(0x6A1D2964)
 I (.\Public\system.h)(0x5DCCF34E)
 I (.\User\stm32f4xx.h)(0x57AEE8B2)
 I (.\Libraries\CMSIS\core_cm4.h)(0x5559F3AE)
@@ -2566,9 +2566,9 @@ I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_can.h)(0x555C4782)
 I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h)(0x555C4782)
 I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h)(0x555C4782)
 I (.\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h)(0x555C4782)
-I (.\APP\arbiter\arbiter.h)(0x6A1955C2)
-F (.\APP\arbiter\arbiter.c)(0x6A1957D2)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\arbiter.o --omf_browse .\obj\arbiter.crf --depend .\obj\arbiter.d)
-I (APP\arbiter\arbiter.h)(0x6A1955C2)
+I (.\APP\arbiter\arbiter.h)(0x6A196470)
+F (.\APP\arbiter\arbiter.c)(0x6A196470)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\arbiter.o --omf_browse .\obj\arbiter.crf --depend .\obj\arbiter.d)
+I (APP\arbiter\arbiter.h)(0x6A196470)
 I (.\Public\system.h)(0x5DCCF34E)
 I (.\User\stm32f4xx.h)(0x57AEE8B2)
 I (.\Libraries\CMSIS\core_cm4.h)(0x5559F3AE)
@@ -5289,7 +5289,7 @@ I (.\USB\STM32_USB_OTG_Driver\inc\usb_dcd_int.h)(0x4F6AD858)
 I (D:\Keil5\ARM\ARMCC\include\stdio.h)(0x588B8344)
 I (.\Public\usart.h)(0x5DCCCD0E)
 I (.\Public\system.h)(0x5DCCF34E)
-F (.\GUI\button.c)(0x5E845BD6)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\button.o --omf_browse .\obj\button.crf --depend .\obj\button.d)
+F (.\GUI\button.c)(0x6A1D2EF8)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\button.o --omf_browse .\obj\button.crf --depend .\obj\button.d)
 I (GUI\button.h)(0x5E847E00)
 I (GUI\guix.h)(0x5E847EA2)
 I (.\Public\system.h)(0x5DCCF34E)
@@ -5730,7 +5730,7 @@ I (.\Picture\integer.h)(0x5776409E)
 I (.\Picture\gif.h)(0x5BAD91A4)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
 F (.\GUI_APP\common.c)(0x5ECF61C4)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\common.o --omf_browse .\obj\common.crf --depend .\obj\common.d)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\Public\system.h)(0x5DCCF34E)
 I (.\User\stm32f4xx.h)(0x57AEE8B2)
 I (.\Libraries\CMSIS\core_cm4.h)(0x5559F3AE)
@@ -5874,7 +5874,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\led\led.h)(0x5E9FEC00)
 I (.\APP\hwjs\hwjs.h)(0x57E1DD80)
 I (.\APP\adc\adc.h)(0x57D3677E)
@@ -5943,7 +5943,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (D:\Keil5\ARM\ARMCC\include\math.h)(0x588B8344)
 I (.\APP\rtc\rtc.h)(0x5EBB699E)
 I (.\APP\ds18b20\ds18b20.h)(0x57D91426)
@@ -6014,7 +6014,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (D:\Keil5\ARM\ARMCC\include\math.h)(0x588B8344)
 I (D:\Keil5\ARM\ARMCC\include\stdlib.h)(0x588B8344)
 I (.\APP\beep\beep.h)(0x6A17DB57)
@@ -6086,7 +6086,7 @@ I (.\APP\iic\iic.h)(0x57D90F8E)
 I (.\APP\mpu6050\eMPL\inv_mpu.h)(0x5ADAE352)
 I (.\APP\mpu6050\eMPL\inv_mpu_dmp_motion_driver.h)(0x5430BEB8)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (D:\Keil5\ARM\ARMCC\include\math.h)(0x588B8344)
 I (.\Font\font_show.h)(0x5BC04A68)
 I (.\Font\font_update.h)(0x5BC04B24)
@@ -6154,7 +6154,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\Font\font_show.h)(0x5BC04A68)
 I (.\Font\font_update.h)(0x5BC04B24)
 I (D:\Keil5\ARM\ARMCC\include\math.h)(0x588B8344)
@@ -6225,7 +6225,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\Font\font_show.h)(0x5BC04A68)
 I (.\Font\font_update.h)(0x5BC04B24)
 I (D:\Keil5\ARM\ARMCC\include\math.h)(0x588B8344)
@@ -6295,7 +6295,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\Font\font_show.h)(0x5BC04A68)
 I (.\Font\font_update.h)(0x5BC04B24)
 I (D:\Keil5\ARM\ARMCC\include\math.h)(0x588B8344)
@@ -6368,7 +6368,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 F (.\GUI_APP\com_app.c)(0x6A169BDF)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\com_app.o --omf_browse .\obj\com_app.crf --depend .\obj\com_app.d)
 I (GUI_APP\com_app.h)(0x5C947C74)
 I (.\GUI\gui.h)(0x5E846F24)
@@ -6433,7 +6433,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\can\can.h)(0x6A166550)
 I (.\APP\rs485\rs485.h)(0x5EBB5F86)
 I (.\APP\rs232\rs232.h)(0x6A169804)
@@ -6504,7 +6504,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 F (.\GUI_APP\qrcode_app.c)(0x5ECF7902)(-c --cpu Cortex-M4.fp -D__MICROLIB -g -O0 --apcs=interwork --split_sections -I .\User -I .\Libraries\CMSIS -I .\Libraries\STM32F4xx_StdPeriph_Driver\inc -I .\APP\led -I .\Public -I .\APP\beep -I .\APP\key -I .\APP\exti -I .\APP\time -I .\APP\iwdg -I .\APP\wwdg -I .\APP\input -I .\APP\rng -I .\APP\wkup -I .\APP\adc -I .\APP\adc_temp -I .\APP\dac -I .\APP\dma -I .\APP\rtc -I .\APP\24Cxx -I .\APP\iic -I .\APP\ds18b20 -I .\APP\hwjs -I .\APP\rs485 -I .\APP\can -I .\APP\tftlcd -I .\APP\flash -I .\APP\spi -I .\APP\stm32_flash -I .\APP\sram -I .\Malloc -I .\APP\sd -I .\Fatfs\src -I .\Fatfs\fatfs_app -I .\Font -I .\Picture -I .\APP\pwm -I .\APP\rs232 -I .\LwIP -I .\LwIP\arch -I .\LwIP\lwip_app\lwip_comm -I .\LwIP\lwip-1.4.1\src\include -I .\LwIP\lwip-1.4.1\src\include\ipv4 -I .\LwIP\lwip-1.4.1\src\include\netif -I .\Libraries\STM32F4x7_ETH_Driver\inc -I .\APP\lan8720 -I .\USB\USB_APP -I .\USB\STM32_USB_OTG_Driver\inc -I .\USB\STM32_USB_HOST_Library\Core\inc -I .\USB\STM32_USB_HOST_Library\Class\MSC\inc -I .\APP\touch_key -I .\APP\lsens -I .\APP\mpu6050 -I .\APP\mpu6050\eMPL -I .\APP\touch -I .\T9INPUT -I .\ICON -I .\GUI -I .\GUI_APP -I .\APP\wm8978 -I .\APP\nrf24l01 -I .\APP\i2s -I .\AudioDecod -I .\AudioDecod\wav -I .\USB\STM32_USB_Device_Library\Core\inc -I .\USB\STM32_USB_Device_Library\Class\msc\inc -I .\LwIP\lwip_app\web_server_demo -I .\APP\dcmi -I .\APP\ov2640 -I .\MJPEG -I .\MJPEG\JPEG -I .\APP\distance_sensor -I .\APP\usart3 -I .\APP\arbiter-I.\RTE\_Target_1-ID:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include-ID:\Keil5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F407xx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_USB_OTG_FS-o .\obj\qrcode_app.o --omf_browse .\obj\qrcode_app.crf --depend .\obj\qrcode_app.d)
 I (GUI_APP\qrcode_app.h)(0x5ECF5332)
 I (.\GUI\gui.h)(0x5E846F24)
@@ -6569,7 +6569,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\wm8978\wm8978.h)(0x584E3BE6)
 I (.\AudioDecod\videoplayer.h)(0x5ECF1CCC)
 I (.\MJPEG\avi.h)(0x5ECF152C)
@@ -6640,7 +6640,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\spi\spi.h)(0x573FD780)
 I (.\APP\nrf24l01\nrf24l01.h)(0x5EBBB112)
 I (GUI_APP\paint_app.h)(0x5C6E4EDC)
@@ -6708,7 +6708,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\key\key.h)(0x5E7DB382)
 I (.\APP\wm8978\wm8978.h)(0x584E3BE6)
 I (.\AudioDecod\audioplay.h)(0x5ECE0BD8)
@@ -6777,7 +6777,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\sd\sdio_sdcard.h)(0x5DBCF992)
 I (.\USB\STM32_USB_Device_Library\Class\msc\inc\usbd_msc_core.h)(0x4F6AD856)
 I (.\USB\STM32_USB_Device_Library\Core\inc\usbd_ioreq.h)(0x4F6AD856)
@@ -6855,7 +6855,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\led\led.h)(0x5E9FEC00)
 I (.\APP\key\key.h)(0x5E7DB382)
 I (.\APP\adc\adc.h)(0x57D3677E)
@@ -6939,7 +6939,7 @@ I (.\GUI\edit.h)(0x5E847E1A)
 I (.\GUI\memo.h)(0x5E847DF6)
 I (.\GUI\window.h)(0x5E847E7E)
 I (.\APP\touch\touch.h)(0x5EA00DCC)
-I (GUI_APP\common.h)(0x6A17F171)
+I (GUI_APP\common.h)(0x6A1D2964)
 I (.\APP\sd\sdio_sdcard.h)(0x5DBCF992)
 I (.\APP\ov2640\ov2640.h)(0x5EAA4C68)
 I (.\APP\ov2640\sccb.h)(0x5EAA4C68)

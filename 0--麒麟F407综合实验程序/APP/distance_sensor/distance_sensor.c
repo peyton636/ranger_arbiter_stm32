@@ -219,7 +219,9 @@ u16 DistanceSensor_GetNearestDistance(void)
 	
 	for(i = 0; i < 4; i++)
 	{
-		if(ds_data.error[i] == DS_ERR_NONE && ds_data.dist[i] < min_dist)
+		if(ds_data.error[i] == DS_ERR_NONE &&
+		   ds_data.dist[i] < 60000 &&
+		   ds_data.dist[i] < min_dist)
 		{
 			min_dist = ds_data.dist[i];
 		}
