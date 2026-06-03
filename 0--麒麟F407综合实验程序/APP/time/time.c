@@ -76,21 +76,7 @@ void TIM4_IRQHandler(void)
 		// }
 
 		can_tick++;
-		if(can_tick % 500 == 0)
-		{
-			u8 test_data = (u8)(can_tick / 500);
-			u8 send_result;
-			
-			send_result = CAN1_Send_Msg_WithID(0x7FF, &test_data, 1);
-			
-			printf("[CAN DIAG] MCR=%08X MSR=%08X RF0R=%08X RF1R=%08X ESR=%08X SEND=%d\r\n",
-				(unsigned int)CAN1->MCR,
-				(unsigned int)CAN1->MSR,
-				(unsigned int)CAN1->RF0R,
-				(unsigned int)CAN1->RF1R,
-				(unsigned int)CAN1->ESR,
-				send_result);
-		}
+		/* 关闭中断周期 CAN 诊断打印，避免串口刷屏 */
 	}
 	TIM_ClearITPendingBit(TIM4,TIM_IT_Update);	
 }

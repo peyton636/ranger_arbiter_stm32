@@ -109,9 +109,9 @@ typedef enum
 #define ARBITER_RECOVER_STABLE_MS     1000
 
 // 超声波避障距离阈值（mm）
-#define ARBITER_OBSTACLE_NEAR_MM      30   // 紧急停车距离
-#define ARBITER_OBSTACLE_WARN_MM      50   // 预警区内侧（50~150mm 蜂鸣+限速）
-#define ARBITER_OBSTACLE_FAR_MM       150  // 开始预警/限速距离
+#define ARBITER_OBSTACLE_NEAR_MM      80    // 危险阈值（D_danger）
+#define ARBITER_OBSTACLE_WARN_MM      120   // 预警阈值（用于蜂鸣渐变）
+#define ARBITER_OBSTACLE_FAR_MM       150   // 安全阈值（D_min）
 
 // 速度限幅参数（mm/s）
 #define ARBITER_MAX_SPEED_MM_S        1000  // 最大速度
@@ -135,9 +135,19 @@ typedef struct
 {
 	s16 v;         // 仲裁后线速度（mm/s）
 	s16 omega;     // 仲裁后角速度（0.01 rad/s）
+	s16 steering;  // 仲裁后转角（0.001rad）
 	ArbiterMode_t mode; // 当前仲裁模式
 	u8  emergency;    // 紧急标志
 } ArbiterOutput_t;
+
+// 四方向障碍物距离（mm）
+typedef struct
+{
+	u16 front;
+	u16 back;
+	u16 left;
+	u16 right;
+} ArbiterObstacleDist_t;
 
 // 系统状态定义
 typedef struct
@@ -251,6 +261,8 @@ typedef struct
 	
 	u16 nearest_dist;            // 最近障碍物距离（mm）
 	u8  obstacle_detected;       // 障碍物检测标志
+	ArbiterObstacleDist_t obstacle_dist; // 四方向距离
+	u8  obstacle_valid_mask;     // 四方向有效位 bit0=F bit1=B bit2=L bit3=R
 	
 	// 底盘反馈数据
 	CanSysStatus_t sys_status;           // 系统状态
@@ -282,6 +294,8 @@ u8 Arbiter_ParseJetsonCmd(u8* frame, u8 len);
 
 // 设置最近障碍物距离（由传感器模块调用）
 void Arbiter_SetObstacleDistance(u16 dist_mm);
+// 设置四方向障碍物距离（mm）
+void Arbiter_SetObstacleDistances(u16 front_mm, u16 back_mm, u16 left_mm, u16 right_mm);
 
 // 执行仲裁逻辑（主循环中周期调用）
 void Arbiter_Process(void);

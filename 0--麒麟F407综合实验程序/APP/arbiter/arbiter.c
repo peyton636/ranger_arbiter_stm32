@@ -26,6 +26,16 @@ const char* ARBITER_MODE_NAMES[] = {
 // 仲裁器状态实例
 ArbiterState_t arb_state;
 
+#define ARB_CMD_FORWARD_MM_S       140
+#define ARB_CMD_SLOW_FORWARD_MM_S   90
+#define ARB_CMD_BACKWARD_MM_S     (-100)
+#define ARB_CMD_TURN_MOVE_MM_S     100   // 阿克曼转向时的线速度（必须非0）
+#define ARB_CMD_ESCAPE_BACK_MM_S   (-80) // 前方受阻时带转向后退
+#define ARB_CMD_TURN_OMEGA          300   // 0.01rad/s，避免发送端放大后溢出
+#define ARB_CMD_TURN_STEER          220   // 0.001rad，阿克曼转角
+#define ARB_TICK_MS                 20    // OSTime 在 TIM4 20ms 中断里自增
+#define ARB_MS_TO_TICKS(ms)        (((ms) + ARB_TICK_MS - 1) / ARB_TICK_MS)
+
 // ============================================================================
 // 内部辅助函数声明
 // ============================================================================
@@ -37,10 +47,187 @@ static void Arbiter_ProcessDegradedMode(void);
 static void Arbiter_ProcessEmergencyMode(void);
 static void Arbiter_ProcessRecoveringMode(void);
 static void Arbiter_CheckHeartbeat(void);
+static u8 Arbiter_IsDangerDist(u16 dist_mm);
+static u8 Arbiter_IsObstacleDist(u16 dist_mm);
+static u8 Arbiter_IsValidDist(u16 dist_mm);
+static u16 Arbiter_SanitizeDist(u16 dist_mm);
+static u16 Arbiter_MinDistance4(u16 a, u16 b, u16 c, u16 d);
+static s16 Arbiter_SteerToSaferSide(u16 left_mm, u8 left_valid, u16 right_mm, u8 right_valid);
+static void Arbiter_ProcessDirectionalPolicy(void);
 
 // ============================================================================
 // 函数实现
 // ============================================================================
+
+static u8 Arbiter_IsDangerDist(u16 dist_mm)
+{
+	return (dist_mm != 0xFFFF && dist_mm <= ARBITER_OBSTACLE_NEAR_MM);
+}
+
+static u8 Arbiter_IsObstacleDist(u16 dist_mm)
+{
+	return (dist_mm != 0xFFFF && dist_mm <= ARBITER_OBSTACLE_FAR_MM);
+}
+
+static u8 Arbiter_IsValidDist(u16 dist_mm)
+{
+	return (dist_mm > 0 && dist_mm < 60000 && dist_mm != 0xFFFF);
+}
+
+static u16 Arbiter_SanitizeDist(u16 dist_mm)
+{
+	if(!Arbiter_IsValidDist(dist_mm))
+		return 0xFFFF;
+	return dist_mm;
+}
+
+static u16 Arbiter_MinDistance4(u16 a, u16 b, u16 c, u16 d)
+{
+	u16 minv = 0xFFFF;
+	if(a < minv) minv = a;
+	if(b < minv) minv = b;
+	if(c < minv) minv = c;
+	if(d < minv) minv = d;
+	return minv;
+}
+
+static s16 Arbiter_SteerToSaferSide(u16 left_mm, u8 left_valid, u16 right_mm, u8 right_valid)
+{
+	/* 只朝“有有效数据且更空”的一侧转 */
+	if(left_valid && !right_valid)
+		return -ARB_CMD_TURN_STEER;
+	if(!left_valid && right_valid)
+		return ARB_CMD_TURN_STEER;
+	if(!left_valid && !right_valid)
+		return ARB_CMD_TURN_STEER;
+	if(right_mm >= left_mm)
+		return ARB_CMD_TURN_STEER;
+	return -ARB_CMD_TURN_STEER;
+}
+
+static void Arbiter_ProcessDirectionalPolicy(void)
+{
+	u16 f = arb_state.obstacle_dist.front;
+	u16 b = arb_state.obstacle_dist.back;
+	u16 l = arb_state.obstacle_dist.left;
+	u16 r = arb_state.obstacle_dist.right;
+	u8 valid_f = (arb_state.obstacle_valid_mask & 0x01) ? 1 : 0;
+	u8 valid_b = (arb_state.obstacle_valid_mask & 0x02) ? 1 : 0;
+	u8 valid_l = (arb_state.obstacle_valid_mask & 0x04) ? 1 : 0;
+	u8 valid_r = (arb_state.obstacle_valid_mask & 0x08) ? 1 : 0;
+
+	/* 前向无效按障碍处理，防止“前方没数据却继续前冲” */
+	u8 obs_f = (!valid_f) ? 1 : Arbiter_IsObstacleDist(f);
+	u8 obs_b = Arbiter_IsObstacleDist(b);
+	u8 obs_l = Arbiter_IsObstacleDist(l);
+	u8 obs_r = Arbiter_IsObstacleDist(r);
+	u8 danger_f = Arbiter_IsDangerDist(f);
+	u8 danger_b = Arbiter_IsDangerDist(b);
+	u8 danger_l = Arbiter_IsDangerDist(l);
+	u8 danger_r = Arbiter_IsDangerDist(r);
+	u8 obs_cnt = (u8)(obs_f + obs_b + obs_l + obs_r);
+
+	arb_state.output.omega = 0;
+	arb_state.output.steering = 0;
+	arb_state.output.emergency = 0;
+
+	/* 1. 四方向全危险 -> 停止 */
+	if(danger_f && danger_b && danger_l && danger_r)
+	{
+		arb_state.output.v = 0;
+		arb_state.output.omega = 0;
+		arb_state.output.emergency = 1;
+		return;
+	}
+
+	/* 2. 三方向障碍 -> 后退 */
+	if(obs_cnt >= 3)
+	{
+		arb_state.output.v = ARB_CMD_BACKWARD_MM_S;
+		arb_state.output.omega = 0;
+		return;
+	}
+
+	/* 3. 前后同时障碍 -> 朝左右更空的一侧转向 */
+	if(obs_f && obs_b)
+	{
+		/* 阿克曼模式下 v=0 转向无效，因此给小速度+转角 */
+		arb_state.output.v = ARB_CMD_TURN_MOVE_MM_S;
+		arb_state.output.steering = Arbiter_SteerToSaferSide(l, valid_l, r, valid_r);
+		return;
+	}
+
+	/* 4. 前+左障碍 -> 右转 */
+	if(obs_f && obs_l)
+	{
+		arb_state.output.v = ARB_CMD_ESCAPE_BACK_MM_S;
+		arb_state.output.steering = ARB_CMD_TURN_STEER;
+		return;
+	}
+
+	/* 5. 前+右障碍 -> 左转 */
+	if(obs_f && obs_r)
+	{
+		arb_state.output.v = ARB_CMD_ESCAPE_BACK_MM_S;
+		arb_state.output.steering = -ARB_CMD_TURN_STEER;
+		return;
+	}
+
+	/* 6. 前方障碍 -> 后退 + 朝左右更空一侧转向 */
+	if(obs_f)
+	{
+		arb_state.output.v = ARB_CMD_BACKWARD_MM_S;
+		arb_state.output.steering = Arbiter_SteerToSaferSide(l, valid_l, r, valid_r);
+		return;
+	}
+
+	/* 7. 左方障碍 -> 右转 */
+	if(obs_l && !obs_r)
+	{
+		arb_state.output.v = ARB_CMD_TURN_MOVE_MM_S;
+		arb_state.output.steering = ARB_CMD_TURN_STEER;
+		return;
+	}
+
+	/* 8. 右方障碍 -> 左转 */
+	if(obs_r && !obs_l)
+	{
+		arb_state.output.v = ARB_CMD_TURN_MOVE_MM_S;
+		arb_state.output.steering = -ARB_CMD_TURN_STEER;
+		return;
+	}
+
+	/* 9. 左右同时障碍 -> 前进（前后安全）否则后退 */
+	if(obs_l && obs_r)
+	{
+		if(!obs_f && !obs_b)
+			arb_state.output.v = ARB_CMD_FORWARD_MM_S;
+		else
+			arb_state.output.v = ARB_CMD_BACKWARD_MM_S;
+		arb_state.output.omega = 0;
+		return;
+	}
+
+	/* 10. 后方障碍 -> 前进 */
+	if(obs_b)
+	{
+		arb_state.output.v = ARB_CMD_FORWARD_MM_S;
+		arb_state.output.omega = 0;
+		return;
+	}
+
+	/* 11. 前方接近危险（warning区）-> 减速前进 */
+	if(f != 0xFFFF && f <= ARBITER_OBSTACLE_FAR_MM && f > ARBITER_OBSTACLE_NEAR_MM)
+	{
+		arb_state.output.v = ARB_CMD_SLOW_FORWARD_MM_S;
+		arb_state.output.omega = 0;
+		return;
+	}
+
+	/* 12. 全方向安全 -> 前进 */
+	arb_state.output.v = ARB_CMD_FORWARD_MM_S;
+	arb_state.output.omega = 0;
+}
 
 /*******************************************************************************
 * 函 数 名         : Arbiter_Init
@@ -63,12 +250,18 @@ void Arbiter_Init(void)
 	// 初始化输出
 	arb_state.output.v = 0;
 	arb_state.output.omega = 0;
+	arb_state.output.steering = 0;
 	arb_state.output.mode = ARBITER_MODE_NORMAL;
 	arb_state.output.emergency = 0;
 	
 	// 初始化传感器数据
 	arb_state.nearest_dist = 0xFFFF;
 	arb_state.obstacle_detected = 0;
+	arb_state.obstacle_dist.front = 0xFFFF;
+	arb_state.obstacle_dist.back = 0xFFFF;
+	arb_state.obstacle_dist.left = 0xFFFF;
+	arb_state.obstacle_dist.right = 0xFFFF;
+	arb_state.obstacle_valid_mask = 0;
 	
 	printf("[Arbiter] Initialized, mode: %s\r\n", ARBITER_MODE_NAMES[arb_state.current_mode]);
 }
@@ -144,29 +337,35 @@ u8 Arbiter_ParseJetsonCmd(u8* frame, u8 len)
 *******************************************************************************/
 void Arbiter_SetObstacleDistance(u16 dist_mm)
 {
-	/* 65533/0xFFFF 为无效读数，不参与避障 */
-	if(dist_mm >= 60000)
-	{
-		arb_state.nearest_dist = 0xFFFF;
-		arb_state.obstacle_detected = 0;
-		return;
-	}
+	/* 兼容老接口：四方向都使用同一距离 */
+	Arbiter_SetObstacleDistances(dist_mm, dist_mm, dist_mm, dist_mm);
+}
 
-	arb_state.nearest_dist = dist_mm;
-	
-	// 判断是否有障碍物
-	if(dist_mm < ARBITER_OBSTACLE_NEAR_MM)
-	{
-		arb_state.obstacle_detected = 1;
-	}
-	else if(dist_mm < ARBITER_OBSTACLE_FAR_MM)
-	{
-		arb_state.obstacle_detected = 1;
-	}
-	else
-	{
-		arb_state.obstacle_detected = 0;
-	}
+void Arbiter_SetObstacleDistances(u16 front_mm, u16 back_mm, u16 left_mm, u16 right_mm)
+{
+	u8 valid_f = Arbiter_IsValidDist(front_mm);
+	u8 valid_b = Arbiter_IsValidDist(back_mm);
+	u8 valid_l = Arbiter_IsValidDist(left_mm);
+	u8 valid_r = Arbiter_IsValidDist(right_mm);
+
+	arb_state.obstacle_dist.front = Arbiter_SanitizeDist(front_mm);
+	arb_state.obstacle_dist.back = Arbiter_SanitizeDist(back_mm);
+	arb_state.obstacle_dist.left = Arbiter_SanitizeDist(left_mm);
+	arb_state.obstacle_dist.right = Arbiter_SanitizeDist(right_mm);
+	arb_state.obstacle_valid_mask =
+		(valid_f ? 0x01 : 0) |
+		(valid_b ? 0x02 : 0) |
+		(valid_l ? 0x04 : 0) |
+		(valid_r ? 0x08 : 0);
+
+	arb_state.nearest_dist = Arbiter_MinDistance4(
+		arb_state.obstacle_dist.front,
+		arb_state.obstacle_dist.back,
+		arb_state.obstacle_dist.left,
+		arb_state.obstacle_dist.right);
+
+	/* 前向无效时强制进入避障模式，不允许按 NORMAL 前冲 */
+	arb_state.obstacle_detected = (arb_state.nearest_dist <= ARBITER_OBSTACLE_FAR_MM || !valid_f) ? 1 : 0;
 }
 
 /*******************************************************************************
@@ -212,7 +411,7 @@ static void Arbiter_CheckHeartbeat(void)
 {
 	u32 elapsed = OSTime - arb_state.last_heartbeat_tick;
 	
-	if(elapsed >= ARBITER_HEARTBEAT_TIMEOUT_MS)
+	if(elapsed >= ARB_MS_TO_TICKS(ARBITER_HEARTBEAT_TIMEOUT_MS))
 	{
 		if(!arb_state.heartbeat_lost)
 		{
@@ -228,13 +427,6 @@ static void Arbiter_CheckHeartbeat(void)
 *******************************************************************************/
 static void Arbiter_ProcessNormalMode(void)
 {
-	// 检查紧急停车条件
-	if(arb_state.nearest_dist < ARBITER_OBSTACLE_NEAR_MM)
-	{
-		Arbiter_SwitchMode(ARBITER_MODE_EMERGENCY);
-		return;
-	}
-	
 	// 检查心跳丢失
 	if(arb_state.heartbeat_lost)
 	{
@@ -252,6 +444,7 @@ static void Arbiter_ProcessNormalMode(void)
 	// 正常模式：透传Jetson指令
 	arb_state.output.v = Arbiter_ClampSpeed(arb_state.jetson_cmd.v);
 	arb_state.output.omega = arb_state.jetson_cmd.omega;
+	arb_state.output.steering = 0;
 	arb_state.output.mode = ARBITER_MODE_NORMAL;
 	arb_state.output.emergency = 0;
 }
@@ -262,16 +455,6 @@ static void Arbiter_ProcessNormalMode(void)
 *******************************************************************************/
 static void Arbiter_ProcessSpeedLimitMode(void)
 {
-	float ratio;
-	s16 limited_v;
-	
-	// 检查紧急停车条件（最高优先级）
-	if(arb_state.nearest_dist < ARBITER_OBSTACLE_NEAR_MM)
-	{
-		Arbiter_SwitchMode(ARBITER_MODE_EMERGENCY);
-		return;
-	}
-	
 	// 检查心跳丢失
 	if(arb_state.heartbeat_lost)
 	{
@@ -285,31 +468,15 @@ static void Arbiter_ProcessSpeedLimitMode(void)
 		Arbiter_SwitchMode(ARBITER_MODE_NORMAL);
 		return;
 	}
-	
-	// 按距离比例限速
-	// 距离越近，限速越严格
-	ratio = 0.0f;
-	if(arb_state.nearest_dist <= ARBITER_OBSTACLE_NEAR_MM)
-	{
-		ratio = 0.0f;  // 极近，停止
-	}
-	else if(arb_state.nearest_dist >= ARBITER_OBSTACLE_FAR_MM)
-	{
-		ratio = 1.0f;  // 较远，不限速
-	}
-	else
-	{
-		// 线性插值：30mm=0%, 150mm=100%
-		ratio = (float)(arb_state.nearest_dist - ARBITER_OBSTACLE_NEAR_MM) / 
-		        (ARBITER_OBSTACLE_FAR_MM - ARBITER_OBSTACLE_NEAR_MM);
-	}
-	
-	// 应用限速比例
-	limited_v = (s16)((float)arb_state.jetson_cmd.v * ratio);
-	arb_state.output.v = Arbiter_ClampSpeed(limited_v);
-	arb_state.output.omega = arb_state.jetson_cmd.omega;  // 角速度不限速（可根据需要调整）
+
+	/* 四方向决策策略（按优先级） */
+	Arbiter_ProcessDirectionalPolicy();
+	arb_state.output.v = Arbiter_ClampSpeed(arb_state.output.v);
 	arb_state.output.mode = ARBITER_MODE_SPEED_LIMIT;
-	arb_state.output.emergency = 0;
+	if(arb_state.output.emergency)
+	{
+		Arbiter_SwitchMode(ARBITER_MODE_EMERGENCY);
+	}
 }
 
 /*******************************************************************************
@@ -318,49 +485,20 @@ static void Arbiter_ProcessSpeedLimitMode(void)
 *******************************************************************************/
 static void Arbiter_ProcessDegradedMode(void)
 {
-	// 检查紧急停车条件
-	if(arb_state.nearest_dist < ARBITER_OBSTACLE_NEAR_MM)
-	{
-		Arbiter_SwitchMode(ARBITER_MODE_EMERGENCY);
-		return;
-	}
-	
 	// 检查心跳是否恢复
 	if(!arb_state.heartbeat_lost && arb_state.jetson_cmd.valid)
 	{
-		// 心跳恢复，但需要车速为0且持续1秒才能切回正常模式
-		if(arb_state.output.v == 0 && 
-		   (OSTime - arb_state.recover_start_tick) >= ARBITER_RECOVER_STABLE_MS)
-		{
-			Arbiter_SwitchMode(ARBITER_MODE_RECOVERING);
-			return;
-		}
+		Arbiter_SwitchMode(ARBITER_MODE_RECOVERING);
+		return;
 	}
-	
-	// 反应式避障规则
-	if(arb_state.nearest_dist < ARBITER_OBSTACLE_NEAR_MM)
-	{
-		// 极近：紧急停车
-		arb_state.output.v = 0;
-		arb_state.output.omega = 0;
-		arb_state.output.emergency = 1;
-	}
-	else if(arb_state.nearest_dist < ARBITER_OBSTACLE_FAR_MM)
-	{
-		// 较近：减速并尝试转向
-		arb_state.output.v = 200;  // 低速前进
-		arb_state.output.omega = 500;  // 转向避障
-		arb_state.output.emergency = 0;
-	}
-	else
-	{
-		// 无障碍：低速前进
-		arb_state.output.v = 300;
-		arb_state.output.omega = 0;
-		arb_state.output.emergency = 0;
-	}
-	
+
+	Arbiter_ProcessDirectionalPolicy();
+	arb_state.output.v = Arbiter_ClampSpeed(arb_state.output.v);
 	arb_state.output.mode = ARBITER_MODE_DEGRADED;
+	if(arb_state.output.emergency)
+	{
+		Arbiter_SwitchMode(ARBITER_MODE_EMERGENCY);
+	}
 }
 
 /*******************************************************************************
@@ -372,13 +510,16 @@ static void Arbiter_ProcessEmergencyMode(void)
 	// 强制停车
 	arb_state.output.v = 0;
 	arb_state.output.omega = 0;
+	arb_state.output.steering = 0;
 	arb_state.output.mode = ARBITER_MODE_EMERGENCY;
 	arb_state.output.emergency = 1;
 	
-	// 检查障碍物是否清除
-	if(arb_state.nearest_dist >= ARBITER_OBSTACLE_NEAR_MM)
+	// 四方向不再全危险时退出紧急模式
+	if(!(Arbiter_IsDangerDist(arb_state.obstacle_dist.front) &&
+	     Arbiter_IsDangerDist(arb_state.obstacle_dist.back) &&
+	     Arbiter_IsDangerDist(arb_state.obstacle_dist.left) &&
+	     Arbiter_IsDangerDist(arb_state.obstacle_dist.right)))
 	{
-		// 障碍物清除，进入恢复状态
 		Arbiter_SwitchMode(ARBITER_MODE_RECOVERING);
 	}
 }
@@ -389,8 +530,11 @@ static void Arbiter_ProcessEmergencyMode(void)
 *******************************************************************************/
 static void Arbiter_ProcessRecoveringMode(void)
 {
-	// 检查是否再次进入紧急情况
-	if(arb_state.nearest_dist < ARBITER_OBSTACLE_NEAR_MM)
+	// 四方向全危险，重新进入紧急模式
+	if(Arbiter_IsDangerDist(arb_state.obstacle_dist.front) &&
+	   Arbiter_IsDangerDist(arb_state.obstacle_dist.back) &&
+	   Arbiter_IsDangerDist(arb_state.obstacle_dist.left) &&
+	   Arbiter_IsDangerDist(arb_state.obstacle_dist.right))
 	{
 		Arbiter_SwitchMode(ARBITER_MODE_EMERGENCY);
 		return;
@@ -404,7 +548,7 @@ static void Arbiter_ProcessRecoveringMode(void)
 	}
 	
 	// 检查是否稳定足够时间
-	if((OSTime - arb_state.recover_start_tick) >= ARBITER_RECOVER_STABLE_MS)
+	if((OSTime - arb_state.recover_start_tick) >= ARB_MS_TO_TICKS(ARBITER_RECOVER_STABLE_MS))
 	{
 		// 稳定完成，切回正常模式
 		Arbiter_SwitchMode(ARBITER_MODE_NORMAL);
@@ -414,6 +558,7 @@ static void Arbiter_ProcessRecoveringMode(void)
 	// 恢复期间保持停车
 	arb_state.output.v = 0;
 	arb_state.output.omega = 0;
+	arb_state.output.steering = 0;
 	arb_state.output.mode = ARBITER_MODE_RECOVERING;
 	arb_state.output.emergency = 0;
 }
@@ -489,16 +634,31 @@ void Arbiter_SendToSTM32A(void)
 	s16 speed_mm_s;
 	s16 spin_speed;  // 自旋速度，单位0.001rad/s
 	s16 angle_scaled; // 转角，单位0.001rad
+	s32 spin_speed_i32;
+	s32 angle_i32;
 	
 	// 获取仲裁后的速度
 	speed_mm_s = arb_state.output.v;
 	
-	// 将角速度转换为自旋速度（单位：0.001rad/s）
-	// arb_state.output.omega 的单位已经是 0.01 rad/s
-	spin_speed = (s16)(arb_state.output.omega * 100); // 0.01 rad/s -> 0.001rad/s
-	
-	// 转角暂时设为0（后续可根据需要计算）
-	angle_scaled = 0;
+	/* Ackermann 优先使用转角；仅停车原地转时用自旋速度 */
+	if(arb_state.output.steering != 0)
+	{
+		spin_speed = 0;
+		angle_i32 = arb_state.output.steering;
+	}
+	else
+	{
+		// 将角速度转换为自旋速度（单位：0.001rad/s）
+		// arb_state.output.omega 的单位已经是 0.01 rad/s
+		spin_speed_i32 = (s32)arb_state.output.omega * 100; // 0.01 rad/s -> 0.001rad/s
+		if(spin_speed_i32 > 32767) spin_speed_i32 = 32767;
+		if(spin_speed_i32 < -32768) spin_speed_i32 = -32768;
+		spin_speed = (s16)spin_speed_i32;
+		angle_i32 = 0;
+	}
+	if(angle_i32 > 32767) angle_i32 = 32767;
+	if(angle_i32 < -32768) angle_i32 = -32768;
+	angle_scaled = (s16)angle_i32;
 	
 	// MOTOROLA格式（大端序）：高字节在前
 	// byte[0-1]: 线速度
@@ -520,18 +680,6 @@ void Arbiter_SendToSTM32A(void)
 	// 发送CAN指令（ID: 0x111）
 	CAN1_Send_Msg_WithID(CAN_ARBITER_CMD_ID, txbuf, 8);
 	
-	// 打印发送调试信息
-	{
-		static u32 last_print = 0;
-		if((OSTime - last_print) >= 500)  // 每500ms打印一次
-		{
-			last_print = OSTime;
-			printf("[CAN TX] 0x111: %02X %02X %02X %02X %02X %02X %02X %02X | v=%d w=%d\r\n",
-				txbuf[0], txbuf[1], txbuf[2], txbuf[3],
-				txbuf[4], txbuf[5], txbuf[6], txbuf[7],
-				speed_mm_s, spin_speed);
-		}
-	}
 }
 
 /*******************************************************************************
@@ -809,6 +957,7 @@ void Arbiter_ParseBMSAlarm(u8* data, u8 len)
 #define CHASSIS_SPEED_DEAD      10
 #define CHASSIS_SPIN_DEAD       50
 #define CHASSIS_WDIFF_DEAD      50
+#define CHASSIS_STEER_DEAD      80
 
 static s16 Chassis_MotionAbs(s16 v)
 {
@@ -828,7 +977,7 @@ static s16 Chassis_ParseS16BE(u8 hi, u8 lo)
 *******************************************************************************/
 void Arbiter_GetMotionInfo(u8 *dir, s16 *speed)
 {
-	s16 v, spin;
+	s16 v, spin, steering;
 	ChassisWheelSpeed_t ws;
 	s16 left, right, wdiff, avg_ws;
 	u8 motion_dir = CHASSIS_MOTION_STOP;
@@ -836,6 +985,7 @@ void Arbiter_GetMotionInfo(u8 *dir, s16 *speed)
 
 	v = arb_state.motion_fb.linear_speed;
 	spin = arb_state.motion_fb.spin_speed;
+	steering = arb_state.motion_fb.steering_angle;
 	Arbiter_GetWheelSpeedPhysical(&ws);
 	left = (ws.lf + ws.lr) / 2;
 	right = (ws.rf + ws.rr) / 2;
@@ -854,22 +1004,18 @@ void Arbiter_GetMotionInfo(u8 *dir, s16 *speed)
 		motion_dir = CHASSIS_MOTION_STOP;
 		motion_speed = 0;
 	}
-	else if(wdiff > CHASSIS_WDIFF_DEAD && (Chassis_MotionAbs(v) > CHASSIS_SPEED_DEAD || avg_ws > CHASSIS_WDIFF_DEAD))
+	else if(Chassis_MotionAbs(steering) > CHASSIS_STEER_DEAD && Chassis_MotionAbs(v) > CHASSIS_SPEED_DEAD)
 	{
-		motion_dir = CHASSIS_MOTION_LEFT;
+		/* 阿克曼模式优先参考转角方向 */
+		if(steering > 0)
+			motion_dir = CHASSIS_MOTION_RIGHT;
+		else
+			motion_dir = CHASSIS_MOTION_LEFT;
 		motion_speed = Chassis_MotionAbs(v);
-		if(motion_speed < CHASSIS_SPEED_DEAD)
-			motion_speed = avg_ws;
-	}
-	else if(wdiff < -CHASSIS_WDIFF_DEAD && (Chassis_MotionAbs(v) > CHASSIS_SPEED_DEAD || avg_ws > CHASSIS_WDIFF_DEAD))
-	{
-		motion_dir = CHASSIS_MOTION_RIGHT;
-		motion_speed = Chassis_MotionAbs(v);
-		if(motion_speed < CHASSIS_SPEED_DEAD)
-			motion_speed = avg_ws;
 	}
 	else if(v > CHASSIS_SPEED_DEAD)
 	{
+		/* 有明确前进速度时，优先判为前进，避免轮速偏差导致常年 RIGHT */
 		motion_dir = CHASSIS_MOTION_FORWARD;
 		motion_speed = v;
 	}
@@ -877,6 +1023,16 @@ void Arbiter_GetMotionInfo(u8 *dir, s16 *speed)
 	{
 		motion_dir = CHASSIS_MOTION_BACKWARD;
 		motion_speed = (s16)(-v);
+	}
+	else if(wdiff > CHASSIS_WDIFF_DEAD && avg_ws > CHASSIS_WDIFF_DEAD)
+	{
+		motion_dir = CHASSIS_MOTION_LEFT;
+		motion_speed = avg_ws;
+	}
+	else if(wdiff < -CHASSIS_WDIFF_DEAD && avg_ws > CHASSIS_WDIFF_DEAD)
+	{
+		motion_dir = CHASSIS_MOTION_RIGHT;
+		motion_speed = avg_ws;
 	}
 	else
 	{
@@ -926,21 +1082,12 @@ void Arbiter_PrintChassisFeedback(void)
 {
 	u8 motion_dir;
 	s16 motion_speed;
-	ChassisWheelSpeed_t ws;
 
 	Arbiter_GetMotionInfo(&motion_dir, &motion_speed);
-	Arbiter_GetWheelSpeedPhysical(&ws);
-
-	printf("[CAN FB] DIR=%s SPD=%d CMD=%d MODE=%s\r\n",
+	printf("[MOTION] DIR=%s SPD=%d MODE=%s\r\n",
 		Arbiter_MotionDirNameAscii(motion_dir),
 		(int)motion_speed,
-		(int)arb_state.output.v,
 		ARBITER_MODE_NAMES[arb_state.current_mode]);
-	printf("[CAN FB] V=%d LF=%d RF=%d LR=%d RR=%d BAT=%d.%dV\r\n",
-		(int)arb_state.motion_fb.linear_speed,
-		(int)ws.lf, (int)ws.rf, (int)ws.lr, (int)ws.rr,
-		(int)(arb_state.sys_status.battery_voltage / 10),
-		(int)(arb_state.sys_status.battery_voltage % 10));
 }
 
 /*******************************************************************************

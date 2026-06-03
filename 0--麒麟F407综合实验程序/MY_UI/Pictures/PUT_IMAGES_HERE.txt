@@ -1,0 +1,9 @@
+Put your custom UI pictures in this folder.
+
+Recommended naming:
+- ui_bg.bmp
+- ui_icon_01.bmp
+- ui_icon_02.bmp
+
+If you plan to load images from SD card at runtime,
+you can mirror this structure under your SD path.

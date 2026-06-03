@@ -86,7 +86,6 @@ void DistanceSensor_Process(void)
 		GPIO_Init(GPIOB, &gpio);
 		trig_pending = 0;
 		USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
-		printf("[DS] TRIG pulse done\r\n");
 	}
 
 	// 接收超时处理（200ms无新数据则重置）
@@ -144,10 +143,12 @@ void USART3_IRQHandler(void)
 
 					for(i = 0; i < 4; i++)
 					{
-						if(ds_data.dist[i] == 0xFFFF)
-							ds_data.error[i] = DS_ERR_TIMEOUT;
-						else if(ds_data.dist[i] == 0xEEEE)
+						/* 传感器无效值兼容：0xFFFF/0xFFFD/超大值/0 都按超时处理 */
+						if(ds_data.dist[i] == 0xEEEE)
 							ds_data.error[i] = DS_ERR_CHKFAIL;
+						else if(ds_data.dist[i] == 0xFFFF || ds_data.dist[i] == 0 ||
+								ds_data.dist[i] >= 60000)
+							ds_data.error[i] = DS_ERR_TIMEOUT;
 						else
 							ds_data.error[i] = DS_ERR_NONE;
 					}
