@@ -39,10 +39,10 @@ static u8 arb_last_policy_rule = 0;
 #define ARB_CMD_TURN_STEER          280  /* 0.001rad≈16°，阿克曼小角转弯 */
 #define ARB_STEER_CMD_LEFT          ARB_CMD_TURN_STEER   /* 0x111：左转=正值 */
 #define ARB_STEER_CMD_RIGHT         (-ARB_CMD_TURN_STEER) /* 0x111：右转=负值 */
-#define ARB_SLIDE_ANGLE_90          1570  /* 斜移模式 0.001rad≈90°（上限±1571） */
+#define ARB_SLIDE_ANGLE_90          1570  /* 斜移模式 0.001rad≈90°（上限±1571）*/
 #define ARB_SLIDE_CMD_LEFT          ARB_SLIDE_ANGLE_90
 #define ARB_SLIDE_CMD_RIGHT         (-ARB_SLIDE_ANGLE_90)
-#define ARB_SLIDE_SPEED_MM_S         70   /* 斜移/90°转向，低于手册700限制 */
+#define ARB_SLIDE_SPEED_MM_S         500   /* 斜移/90°转向，低于手册700限制 */
 #define ARB_INTENT_STEER_DEADZONE   80    /* 0.001rad，低于此视为无转向意图 */
 #define ARB_INTENT_OMEGA_DEADZONE   80    /* 0.001rad/s */
 #define ARB_INTENT_MIN_MOVE_MM_S    20    /* Jetson v 低于此用策略默认兜底 */
@@ -60,6 +60,8 @@ static void Arbiter_ProcessDegradedMode(void);
 static void Arbiter_ProcessEmergencyMode(void);
 static void Arbiter_ProcessRecoveringMode(void);
 static void Arbiter_CheckHeartbeat(void);
+static void Arbiter_ProcessDegradedAutonomy(void);
+static void Arbiter_TryRecoverJetsonSpeedInSpeedLimit(void);
 static u8 Arbiter_IsDangerDist(u16 dist_mm);
 static u8 Arbiter_IsObstacleDist(u16 dist_mm);
 static u8 Arbiter_IsValidDist(u16 dist_mm);
@@ -390,6 +392,90 @@ static s16 Arbiter_JetsonSlideSpeed(void)
 	if(mag < ARB_INTENT_MIN_MOVE_MM_S)
 		mag = ARB_SLIDE_SPEED_MM_S;
 	return Arbiter_ClampSpeed(mag);
+}
+
+/* SPEED_LIMIT 同向行驶时，优先向 Jetson 目标速度回归（仍受距离限速） */
+static void Arbiter_TryRecoverJetsonSpeedInSpeedLimit(void)
+{
+	s16 v_cmd = arb_state.jetson_cmd.v;
+	s16 v_recover;
+	u8 valid;
+	u16 dist_mm;
+
+	if(v_cmd == 0)
+		return;
+
+	if(v_cmd > 0)
+	{
+		dist_mm = arb_state.obstacle_dist.front;
+		valid = (arb_state.obstacle_valid_mask & 0x01) ? 1 : 0;
+	}
+	else
+	{
+		dist_mm = arb_state.obstacle_dist.back;
+		valid = (arb_state.obstacle_valid_mask & 0x02) ? 1 : 0;
+	}
+
+	v_recover = Arbiter_ScaleJetsonVByDist(v_cmd, dist_mm, valid);
+
+	/* 仅在当前输出方向与 Jetson 同向时做“提速回归”，不强行改绕行动作方向 */
+	if((v_cmd > 0 && arb_state.output.v > 0) || (v_cmd < 0 && arb_state.output.v < 0))
+	{
+		if(Chassis_MotionAbs(arb_state.output.v) < Chassis_MotionAbs(v_recover))
+			arb_state.output.v = v_recover;
+	}
+}
+
+/* 断连降级本地策略：四向都有障碍则停车，否则选最空方向运动 */
+static void Arbiter_ProcessDegradedAutonomy(void)
+{
+	u16 f = arb_state.obstacle_dist.front;
+	u16 b = arb_state.obstacle_dist.back;
+	u16 l = arb_state.obstacle_dist.left;
+	u16 r = arb_state.obstacle_dist.right;
+	u8 valid_f = (arb_state.obstacle_valid_mask & 0x01) ? 1 : 0;
+	u8 valid_b = (arb_state.obstacle_valid_mask & 0x02) ? 1 : 0;
+	u8 valid_l = (arb_state.obstacle_valid_mask & 0x04) ? 1 : 0;
+	u8 valid_r = (arb_state.obstacle_valid_mask & 0x08) ? 1 : 0;
+	u8 obs_f = valid_f ? Arbiter_IsObstacleDist(f) : 1;
+	u8 obs_b = valid_b ? Arbiter_IsObstacleDist(b) : 1;
+	u8 obs_l = valid_l ? Arbiter_IsObstacleDist(l) : 1;
+	u8 obs_r = valid_r ? Arbiter_IsObstacleDist(r) : 1;
+	u8 best_dir;
+
+	arb_state.output.emergency = 0;
+	arb_state.output.omega = 0;
+
+	/* 四向均受阻：停车 */
+	if(obs_f && obs_b && obs_l && obs_r)
+	{
+		Arbiter_ApplyStopOutput();
+		arb_last_policy_rule = 1;
+		return;
+	}
+
+	best_dir = Arbiter_PickFreestAll4(f, valid_f, b, valid_b, l, valid_l, r, valid_r);
+	switch(best_dir)
+	{
+		case 0: /* 前 */
+			arb_last_policy_rule = 12;
+			Arbiter_PolicySetAckermannStraight(Arbiter_ScaleJetsonVByDist(
+				ARB_CMD_FORWARD_MM_S, f, valid_f));
+			break;
+		case 1: /* 后 */
+			arb_last_policy_rule = 7;
+			Arbiter_PolicySetAckermannStraight(-Arbiter_ScaleJetsonVByDist(
+				Chassis_MotionAbs(ARB_CMD_BACKWARD_MM_S), b, valid_b));
+			break;
+		case 2: /* 左 */
+			arb_last_policy_rule = 8;
+			Arbiter_PolicyMoveSlide90Ex(ARB_SLIDE_CMD_LEFT, ARB_SLIDE_SPEED_MM_S);
+			break;
+		default: /* 右 */
+			arb_last_policy_rule = 9;
+			Arbiter_PolicyMoveSlide90Ex(ARB_SLIDE_CMD_RIGHT, ARB_SLIDE_SPEED_MM_S);
+			break;
+	}
 }
 
 static void Arbiter_ApplyForwardIntent(u16 f, u8 vf, u16 b, u8 vb,
@@ -982,6 +1068,7 @@ static void Arbiter_ProcessSpeedLimitMode(void)
 
 	/* 以 Jetson 意图为主：先尝试指令方向+按距离限速，受阻再绕行 */
 	Arbiter_ProcessJetsonIntentPolicy();
+	Arbiter_TryRecoverJetsonSpeedInSpeedLimit();
 	arb_state.output.v = Arbiter_ClampSpeed(arb_state.output.v);
 	arb_state.output.mode = ARBITER_MODE_SPEED_LIMIT;
 	if(arb_state.output.emergency)
@@ -1009,15 +1096,8 @@ static void Arbiter_ProcessDegradedMode(void)
 		}
 	}
 
-	/* Jetson v=0 或未收到有效帧：停车，不 autonomous 避障 */
-	if(Arbiter_IsStopIntent() || !arb_state.jetson_cmd.valid)
-	{
-		Arbiter_ApplyStopOutput();
-		arb_state.output.mode = ARBITER_MODE_DEGRADED;
-		return;
-	}
-
-	Arbiter_ProcessJetsonIntentPolicy();
+	/* 断连降级：改用 STM32B 本地自动避障策略 */
+	Arbiter_ProcessDegradedAutonomy();
 	arb_state.output.v = Arbiter_ClampSpeed(arb_state.output.v);
 	arb_state.output.mode = ARBITER_MODE_DEGRADED;
 	if(arb_state.output.emergency)

@@ -1,7 +1,7 @@
 #ifndef CHASSIS_CAN_TEST_H
 #define CHASSIS_CAN_TEST_H
 
-/* 1=×ó×ª(Ð±ÒÆ90¡ã)£¬0=ÓÒ×ª(Ð±ÒÆ90¡ã)£»¿ª¹ØÔÚ main.c µÄ CHASSIS_CAN_MOTION_TEST */
+/* 1=ï¿½ï¿½×ª(Ð±ï¿½ï¿½90ï¿½ï¿½)ï¿½ï¿½0=ï¿½ï¿½×ª(Ð±ï¿½ï¿½90ï¿½ï¿½)ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ main.c ï¿½ï¿½ CHASSIS_CAN_MOTION_TEST */
 #define CHASSIS_TEST_TURN_LEFT   1
 
 void ChassisCanTest_RunOnce(void);

@@ -454,13 +454,43 @@ static u16 g_back_dist_mm = DS_DIST_UNKNOWN;
 static u16 g_left_dist_mm = DS_DIST_UNKNOWN;
 static u16 g_right_dist_mm = DS_DIST_UNKNOWN;
 static u8 g_beep_ui_dirty = 0;
+static u8 g_force_stop_enable = 0;  // KEY0 强制停车开关：1=强制停，0=恢复仲裁
+static u8 g_force_stop_ui_dirty = 1;
 
-// KEY1 切换距离蜂鸣开关
-static void Beep_ToggleSwitch(void)
+static void SensorUI_UpdateForceStopBanner(void);
+
+// KEY0/KEY1 按键处理：KEY0=强制停车切换，KEY1=蜂鸣开关切换
+static void ControlKey_ToggleSwitch(void)
 {
 	u8 key;
 
 	key = KEY_Scan(0);
+	if(key == KEY0_PRESS)
+	{
+		g_force_stop_enable = !g_force_stop_enable;
+		g_beep_ui_dirty = 1;
+		g_force_stop_ui_dirty = 1;
+		if(g_force_stop_enable)
+		{
+			arb_state.output.v = 0;
+			arb_state.output.omega = 0;
+			arb_state.output.steering = 0;
+			arb_state.output.mode = ARBITER_MODE_EMERGENCY;
+			arb_state.output.emergency = 1;
+			BEEP_SetVolume(0);
+			printf("[CTRL] FORCE STOP ON (KEY0)\r\n");
+		}
+		else
+		{
+			/* 解除强停后重启仲裁状态机，重新进入常规流程 */
+			Arbiter_Init();
+			Arbiter_EnableCANMode();
+			printf("[CTRL] FORCE STOP OFF -> Arbiter restart (KEY0)\r\n");
+		}
+		delay_ms(200);
+		return;
+	}
+
 	if(key == KEY1_PRESS)
 	{
 		g_beep_dist_enable = !g_beep_dist_enable;
@@ -506,6 +536,23 @@ static void Motion_ControlByDistance(void)
 {
 	static u16 can_send_div = 0;
 
+	if(g_force_stop_enable)
+	{
+		/* 强制停车：忽略 Jetson/避障策略，仅周期下发 0 速度 */
+		arb_state.output.v = 0;
+		arb_state.output.omega = 0;
+		arb_state.output.steering = 0;
+		arb_state.output.mode = ARBITER_MODE_EMERGENCY;
+		arb_state.output.emergency = 1;
+		can_send_div++;
+		if(can_send_div >= ARBITER_CAN_DIV)
+		{
+			can_send_div = 0;
+			Arbiter_SendToSTM32A();
+		}
+		return;
+	}
+
 	/* 无 Jetson 真实帧时不注入本地巡航，保持 v=0 停车（由仲裁 DEGRADED 处理） */
 	Arbiter_SetObstacleDistances(
 		g_front_dist_mm,
@@ -543,6 +590,15 @@ static void SensorUI_UpdateValue(u16 y, const char *text)
 	LCD_ShowString(UI_X_VAL, y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)text);
 }
 
+static void SensorUI_UpdateForceStopBanner(void)
+{
+	LCD_Fill(UI_X, UI_Y_TITLE, tftlcd_data.width - 1, UI_Y_TITLE + UI_FS - 1, BLACK);
+	if(g_force_stop_enable)
+		LCD_ShowString(UI_X, UI_Y_TITLE, tftlcd_data.width, tftlcd_data.height, UI_FS, "*** FORCE STOP ON ***");
+	else
+		LCD_ShowString(UI_X, UI_Y_TITLE, tftlcd_data.width, tftlcd_data.height, UI_FS, "=== Sensor Data ===");
+}
+
 // 首次绘制：静态标签只画一次
 static void SensorUI_DrawStatic(void)
 {
@@ -563,7 +619,7 @@ static void SensorUI_DrawStatic(void)
 	left_x = 10;
 	right_x = (u16)(cx + 20);
 
-	LCD_ShowString(UI_X, UI_Y_TITLE, tftlcd_data.width, tftlcd_data.height, UI_FS, "=== Sensor Data ===");
+	SensorUI_UpdateForceStopBanner();
 	LCD_ShowString(UI_X, UI_Y_COUNT, tftlcd_data.width, tftlcd_data.height, UI_FS, "Count:");
 	LCD_ShowString(UI_X, UI_Y_DIST_HDR, tftlcd_data.width, tftlcd_data.height, UI_FS, "Distance Sensors:");
 	/* IF1 上、IF2 下、IF3 左、IF4 右 */
@@ -578,10 +634,15 @@ static void SensorUI_DrawStatic(void)
 
 static void SensorUI_UpdateBeepStatus(void)
 {
-	if(g_beep_dist_enable)
-		SensorUI_UpdateLine(UI_Y_BEEP, "Beep:ON  KEY1=toggle");
+	if(g_force_stop_enable)
+		SensorUI_UpdateLine(UI_Y_BEEP, "STOP:ON KEY0=resume");
 	else
-		SensorUI_UpdateLine(UI_Y_BEEP, "Beep:OFF KEY1=toggle");
+	{
+		if(g_beep_dist_enable)
+			SensorUI_UpdateLine(UI_Y_BEEP, "Beep:ON  KEY1=toggle");
+		else
+			SensorUI_UpdateLine(UI_Y_BEEP, "Beep:OFF KEY1=toggle");
+	}
 }
 
 // 局部更新计数
@@ -873,7 +934,7 @@ void SensorData_ShowScreen(void)
 	u8 can_updated = 0;
 	u8 can_lcd_due = 0;
 
-	Beep_ToggleSwitch();
+	ControlKey_ToggleSwitch();
 	DistanceSensor_DrainLog();
 
 	/* 处理 Jetson 通过 USART2 发来的 8 字节控制帧 */
@@ -946,6 +1007,12 @@ void SensorData_ShowScreen(void)
 	{
 		SensorUI_UpdateBeepStatus();
 		g_beep_ui_dirty = 0;
+	}
+
+	if(g_force_stop_ui_dirty)
+	{
+		SensorUI_UpdateForceStopBanner();
+		g_force_stop_ui_dirty = 0;
 	}
 
 	if(sensor_updated)
