@@ -66,6 +66,7 @@
 ".\obj\distance_sensor.o"
 ".\obj\usart3.o"
 ".\obj\arbiter.o"
+".\obj\chassis_can_test.o"
 ".\obj\malloc.o"
 ".\obj\diskio.o"
 ".\obj\ff.o"

@@ -96,3 +96,5 @@
 .\obj\main.o: .\APP\distance_sensor\distance_sensor.h
 .\obj\main.o: .\APP\can\can.h
 .\obj\main.o: .\APP\arbiter\arbiter.h
+.\obj\main.o: .\APP\chassis_test\chassis_can_test.h
+.\obj\main.o: .\APP\usart3\usart3.h

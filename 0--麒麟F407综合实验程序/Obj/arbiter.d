@@ -40,3 +40,4 @@
 .\obj\arbiter.o: .\Public\usart.h
 .\obj\arbiter.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\obj\arbiter.o: .\Public\SysTick.h
+.\obj\arbiter.o: .\APP\time\time.h

@@ -24,11 +24,12 @@ extern const char* ARBITER_MODE_NAMES[];
 // 通信协议定义（RANGER MINI 3.0 CAN2.0B 协议，MOTOROLA格式，500K波特率）
 // ============================================================================
 
-// Jetson → STM32 B 数据帧格式（通过USART2接收）
-// [0xFF][v高][v低][ω高][ω低][心跳标识][预留][校验和]
-#define JETSON_FRAME_HEADER   0xFF
-#define JETSON_FRAME_LEN      8
-#define JETSON_HEARTBEAT_VAL  0xAA  // 心跳标识
+// Jetson ↔ STM32 B 数据帧格式（V3.0，24字节统一帧）
+#define JETSON_FRAME_HEADER      0xAA
+#define JETSON_FRAME_LEN         24
+#define JETSON_FRAME_TYPE_DOWN   0x01
+#define JETSON_FRAME_TYPE_UP_ST  0x02
+#define JETSON_FRAME_TYPE_UP_EX  0x03
 
 // STM32 B → STM32 A 控制指令帧
 #define CAN_ARBITER_CMD_ID    0x111  // 运动控制帧（周期20ms，超时500ms）
@@ -53,12 +54,30 @@ extern const char* ARBITER_MODE_NAMES[];
 #define CAN_BMS_DATA_ID       0x361  // BMS数据反馈帧（周期500ms）
 #define CAN_BMS_ALARM_ID      0x362  // BMS告警状态反馈帧（周期500ms）
 
+/* 0x261~0x268 电机低速帧 byte[5] 驱动器状态位（见协议表2） */
+#define CAN_DRV_ST_VLOW       0x01  /* bit0 电源电压过低 0正常 1过低 */
+#define CAN_DRV_ST_MOT_OT     0x02  /* bit1 电机过温     0正常 1过温 */
+#define CAN_DRV_ST_DRV_OC     0x04  /* bit2 驱动器过流   0正常 1过流 */
+#define CAN_DRV_ST_DRV_OT     0x08  /* bit3 驱动器过温   0正常 1过温 */
+#define CAN_DRV_ST_SENSOR     0x10  /* bit4 传感器       0正常 1异常 */
+#define CAN_DRV_ST_ERR        0x20  /* bit5 驱动器错误   0正常 1错误 */
+#define CAN_DRV_ST_EN         0x40  /* bit6 驱动器使能   1使能 0未使能 */
+
 // 控制模式定义
 typedef enum
 {
 	CAN_MODE_STANDBY = 0x00,     // 待机模式
 	CAN_MODE_CAN_CTRL = 0x01     // CAN指令控制模式
 } CanMode_t;
+
+/* 0x211 byte[1] 车体控制模式回馈（含遥控，与 CanMode_t 发送值一致） */
+#define CAN_SYS_MODE_STANDBY    0x00u
+#define CAN_SYS_MODE_CAN_CTRL   0x01u
+#define CAN_SYS_MODE_REMOTE     0x03u
+
+/* 0x291 byte[1] 运动模型切换状态 */
+#define CAN_MOTION_SWITCH_DONE  0x00u
+#define CAN_MOTION_SWITCHING    0x01u
 
 // 驱动模式定义
 typedef enum
@@ -109,9 +128,14 @@ typedef enum
 #define ARBITER_RECOVER_STABLE_MS     1000
 
 // 超声波避障距离阈值（mm）
-#define ARBITER_OBSTACLE_NEAR_MM      80    // 危险阈值（D_danger）
+#define ARBITER_OBSTACLE_NEAR_MM      60   // 危险阈值（D_emerg, 30cm）
 #define ARBITER_OBSTACLE_WARN_MM      120   // 预警阈值（用于蜂鸣渐变）
-#define ARBITER_OBSTACLE_FAR_MM       150   // 安全阈值（D_min）
+#define ARBITER_OBSTACLE_FAR_MM       180   // 限速阈值（D_limit, 80cm）
+
+/* 与 distance_sensor.h DS_DIST_* 一致 */
+#define ARBITER_DIST_UNKNOWN          0xFFFFu
+#define ARBITER_DIST_FAILSAFE_MM      0u
+#define ARBITER_DIST_MAX_MM           59999u
 
 // 速度限幅参数（mm/s）
 #define ARBITER_MAX_SPEED_MM_S        1000  // 最大速度
@@ -124,9 +148,15 @@ typedef enum
 // Jetson速度指令
 typedef struct
 {
+	u8  mode_req;    // 期望控制模式（0待机,1CAN控制,2遥控）
 	s16 v;       // 期望线速度（mm/s），正=前进，负=后退
-	s16 omega;   // 期望角速度（0.01 rad/s），正=左转，负=右转
-	u8  heartbeat; // 心跳标识
+	s16 omega;   // 期望角速度（0.001 rad/s），正=左转，负=右转
+	s16 steer;   // 期望转角（0.001rad）
+	u8  motion_model; // 运动模型（0阿克曼/1斜移/2自旋/3驻车）
+	u8  light_en;
+	u8  light_mode;
+	u8  clear_error;
+	u8  seq;      // 帧序号（0~255循环）
 	u8  valid;     // 数据有效标志
 } JetsonCmd_t;
 
@@ -134,7 +164,7 @@ typedef struct
 typedef struct
 {
 	s16 v;         // 仲裁后线速度（mm/s）
-	s16 omega;     // 仲裁后角速度（0.01 rad/s）
+	s16 omega;     // 仲裁后角速度（0.001 rad/s）
 	s16 steering;  // 仲裁后转角（0.001rad）
 	ArbiterMode_t mode; // 当前仲裁模式
 	u8  emergency;    // 紧急标志
@@ -254,6 +284,8 @@ typedef struct
 	ArbiterMode_t current_mode;  // 当前模式
 	u32 last_heartbeat_tick;     // 上次心跳时间戳
 	u8  heartbeat_lost;          // 心跳丢失标志
+	u8  last_jetson_seq;         // 最近一次Jetson序号
+	u8  jetson_seq_inited;       // Jetson序号是否初始化
 	u32 recover_start_tick;      // 恢复开始时间戳
 	
 	JetsonCmd_t jetson_cmd;      // Jetson原始指令
@@ -380,7 +412,11 @@ void Arbiter_PrintChassisFeedback(void);
 #define CHASSIS_MOTION_FORWARD  4
 #define CHASSIS_MOTION_BACKWARD 5
 
+/* 基于 CAN 0x291 模式 + 0x221 整机速度/转角反馈，供 LCD 与 [MOTION] 串口 */
 void Arbiter_GetMotionInfo(u8 *dir, s16 *speed);
+
+/* 基于 arb_state.output（下发 0x111 内容），供 LCD 对比显示 */
+void Arbiter_GetCmdMotionInfo(u8 *dir, s16 *speed);
 
 const char* Arbiter_MotionDirNameAscii(u8 dir);
 

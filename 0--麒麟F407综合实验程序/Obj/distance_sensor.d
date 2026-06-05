@@ -38,3 +38,4 @@
 .\obj\distance_sensor.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
 .\obj\distance_sensor.o: .\Public\usart.h
 .\obj\distance_sensor.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\obj\distance_sensor.o: .\APP\time\time.h

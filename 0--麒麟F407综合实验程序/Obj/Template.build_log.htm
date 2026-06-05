@@ -22,33 +22,26 @@ Dialog DLL:      TCM.DLL V1.32.0.0
  
 <h2>Project:</h2>
 C:\Users\Administrator\Desktop\麒麟f407\0--麒麟F407综合实验程序\0--麒麟F407综合实验程序\Template.uvprojx
-Project File Date:  06/01/2026
+Project File Date:  06/05/2026
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 5 (build 528)', folder: 'D:\Keil5\ARM\ARMCC\Bin'
 Build target 'Target 1'
-compiling usart3.c...
-APP\usart3\usart3.c(200): warning:  #1-D: last line of file ends without a newline
-  }
-APP\usart3\usart3.c: 1 warning, 0 errors
-compiling arbiter.c...
-APP\arbiter\arbiter.c(115): warning:  #177-D: variable "valid_b"  was declared but never referenced
-  	u8 valid_b = (arb_state.obstacle_valid_mask & 0x02) ? 1 : 0;
-APP\arbiter\arbiter.c: 1 warning, 0 errors
+compiling chassis_can_test.c...
 compiling main.c...
-.\APP\distance_sensor\distance_sensor.h(29): warning:  #1-D: last line of file ends without a newline
-  #endif
-User\main.c(596): warning:  #550-D: variable "left_x"  was set but never used
+User\main.c(631): warning:  #550-D: variable "left_x"  was set but never used
   	u16 left_x;
-User\main.c(533): warning:  #177-D: function "SensorUI_UpdateValue"  was declared but never referenced
+User\main.c(526): warning:  #177-D: function "SensorUI_UpdateLineGBK"  was declared but never referenced
+  static void SensorUI_UpdateLineGBK(u16 y, const char *text)
+User\main.c(540): warning:  #177-D: function "SensorUI_UpdateValue"  was declared but never referenced
   static void SensorUI_UpdateValue(u16 y, const char *text)
-User\main.c(750): warning:  #177-D: function "My_UI_Loop"  was declared but never referenced
+User\main.c(769): warning:  #177-D: function "My_UI_Loop"  was declared but never referenced
   static void My_UI_Loop(void)
 User\main.c: 4 warnings, 0 errors
 linking...
-Program Size: Code=72436 RO-data=160564 RW-data=760 ZI-data=1222688  
+Program Size: Code=78496 RO-data=160836 RW-data=784 ZI-data=1222920  
 FromELF: creating hex file...
-".\Obj\Template.axf" - 0 Error(s), 6 Warning(s).
+".\Obj\Template.axf" - 0 Error(s), 4 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -62,7 +55,7 @@ Package Vendor: Keil
   D:\Keil5\ARM\PACK\Keil\STM32F4xx_DFP\2.16.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include
 
 <h2>Collection of Component Files used:</h2>
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:01
 </pre>
 </body>
 </html>

@@ -1,4 +1,6 @@
 #include "time.h"
+#include "stdio.h"
+#include "stm32f4xx.h"
 #include "distance_sensor.h"
 #include "can.h"
 #include "led.h"
@@ -43,6 +45,33 @@ void TIM4_Init(u16 per,u16 psc)
 }
 
 volatile  u32  OSTime;
+
+u32 Log_GetUptimeMs(void)
+{
+	u32 tick, cnt, ms;
+
+	do {
+		tick = OSTime;
+		cnt = TIM4->CNT;
+		if(tick != OSTime)
+			continue;
+		ms = tick * LOG_TICK_MS;
+		ms += (cnt * LOG_TICK_MS) / LOG_TIM4_PERIOD;
+		break;
+	} while(1);
+	return ms;
+}
+
+void Log_TsPrefix(char *buf, u16 buf_len)
+{
+	u32 ms;
+
+	if(!buf || buf_len < 11)
+		return;
+	ms = Log_GetUptimeMs() % LOG_TS_WRAP_MS;
+	sprintf(buf, "[T%06lu] ", (unsigned long)ms);
+}
+
 /*******************************************************************************
 * �� �� ��         : TIM4_IRQHandler
 * ��������		   : TIM4�жϺ���
