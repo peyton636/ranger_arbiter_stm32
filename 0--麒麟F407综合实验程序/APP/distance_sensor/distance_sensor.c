@@ -25,7 +25,6 @@ typedef struct
 } DsChannelFilter_t;
 
 static DsChannelFilter_t ds_filter[4];
-static u16 ds_arb_mm[4];
 static volatile u8 ds_log_rx_timeout = 0;
 
 static u16 DistanceSensor_AbsDiffU16(u16 a, u16 b)
@@ -42,7 +41,6 @@ static void DistanceSensor_FilterReset(void)
 		ds_filter[i].count = 0;
 		ds_filter[i].stable_mm = DS_DIST_UNKNOWN;
 		ds_filter[i].stable_valid = 0;
-		ds_arb_mm[i] = DS_DIST_UNKNOWN;
 	}
 }
 
@@ -106,9 +104,8 @@ static u8 DistanceSensor_FilterIsSpikeJump(u16 mm, u16 valid_buf[], u8 n_valid, 
 
 static void DistanceSensor_UpdateArbEma(u8 ch, u16 stable)
 {
-	if(ch >= 4 || stable == DS_DIST_UNKNOWN)
-		return;
-	ds_arb_mm[ch] = stable;
+	(void)ch;
+	(void)stable;
 }
 
 static void DistanceSensor_FilterPushChannel(u8 ch, u16 mm)
@@ -210,7 +207,6 @@ static void DistanceSensor_FilterPushChannel(u8 ch, u16 mm)
 	{
 		f->stable_valid = 0;
 		f->stable_mm = DS_DIST_UNKNOWN;
-		ds_arb_mm[ch] = DS_DIST_UNKNOWN;
 	}
 }
 

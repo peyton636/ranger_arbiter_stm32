@@ -98,3 +98,4 @@
 .\obj\main.o: .\APP\arbiter\arbiter.h
 .\obj\main.o: .\APP\chassis_test\chassis_can_test.h
 .\obj\main.o: .\APP\usart3\usart3.h
+.\obj\main.o: .\APP\gps\gps.h

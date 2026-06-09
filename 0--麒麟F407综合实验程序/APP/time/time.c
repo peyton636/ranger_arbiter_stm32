@@ -80,10 +80,6 @@ void Log_TsPrefix(char *buf, u16 buf_len)
 *******************************************************************************/
 void TIM4_IRQHandler(void)
 {
-	u32 can_id;
-	u8 can_buf[8];
-	u8 can_len;
-	u8 ci;
 	static u32 can_tick = 0;
 
 	if(TIM_GetITStatus(TIM4,TIM_IT_Update))

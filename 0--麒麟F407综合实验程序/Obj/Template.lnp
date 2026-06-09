@@ -65,6 +65,7 @@
 ".\obj\cst716.o"
 ".\obj\distance_sensor.o"
 ".\obj\usart3.o"
+".\obj\gps.o"
 ".\obj\arbiter.o"
 ".\obj\chassis_can_test.o"
 ".\obj\malloc.o"

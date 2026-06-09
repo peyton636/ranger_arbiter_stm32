@@ -132,6 +132,22 @@ typedef enum
 #define ARBITER_OBSTACLE_WARN_MM      120   // 预警阈值（用于蜂鸣渐变）
 #define ARBITER_OBSTACLE_FAR_MM       180   // 限速阈值（D_limit, 80cm）
 
+// 动态安全距离配置（用于随速度调整限速边界）
+#define ARBITER_BRAKE_DECEL_MM_S2     2000  // 制动减速度，mm/s^2
+#define ARBITER_SYS_DELAY_MS          350   // 感知+通信+执行总延迟（保守）
+#define ARBITER_SAFE_MARGIN_MM        100   // 额外安全余量
+#define ARBITER_DYNAMIC_FAR_MIN_MM    250   // 动态 FAR 下限
+#define ARBITER_DYNAMIC_FAR_MAX_MM    800   // 动态 FAR 上限
+#define ARBITER_DYNAMIC_NEAR_MIN_MM   60    // 动态 NEAR 下限
+#define ARBITER_DYNAMIC_NEAR_MAX_MM   200   // 动态 NEAR 上限
+
+// 方向权重（千分比，1000=1.0），仅用于策略选向，不用于安全硬判定
+#define ARBITER_WEIGHT_FULL           1000
+#define ARBITER_WEIGHT_HIGH           900
+#define ARBITER_WEIGHT_MEDIUM         600
+#define ARBITER_WEIGHT_LOW            300
+#define ARBITER_WEIGHT_IGNORE         200
+
 /* 与 distance_sensor.h DS_DIST_* 一致 */
 #define ARBITER_DIST_UNKNOWN          0xFFFFu
 #define ARBITER_DIST_FAILSAFE_MM      0u

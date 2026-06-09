@@ -41,6 +41,7 @@
 #include "arbiter.h"
 #include "chassis_can_test.h"
 #include "usart3.h"
+#include "gps.h"
 #include "stdio.h"
 
 
@@ -569,25 +570,11 @@ static void Motion_ControlByDistance(void)
 	}
 }
 
-// 局部擦除固定宽度区域后重绘（中文）
-static void SensorUI_UpdateLineGBK(u16 y, const char *text)
-{
-	LCD_Fill(UI_X, y, UI_X + UI_LINE_W, y + UI_FS - 1, BLACK);
-	LCD_ShowFontString(UI_X, y, tftlcd_data.width, tftlcd_data.height, (u8*)text, UI_FS, 0);
-}
-
 // 局部擦除固定宽度区域后重绘（ASCII）
 static void SensorUI_UpdateLine(u16 y, const char *text)
 {
 	LCD_Fill(UI_X, y, UI_X + UI_LINE_W, y + UI_FS - 1, BLACK);
 	LCD_ShowString(UI_X, y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)text);
-}
-
-// 局部擦除数值区后重绘
-static void SensorUI_UpdateValue(u16 y, const char *text)
-{
-	LCD_Fill(UI_X_VAL, y, tftlcd_data.width - 1, y + UI_FS - 1, BLACK);
-	LCD_ShowString(UI_X_VAL, y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)text);
 }
 
 static void SensorUI_UpdateForceStopBanner(void)
@@ -689,7 +676,6 @@ static void SensorUI_UpdateDistances(DistanceSensor_Data *ds)
 	u16 cx;
 	u16 top_y;
 	u16 bot_y;
-	u16 left_x;
 	u16 right_x;
 	u16 mid_y;
 	char buf1[28], buf2[28], buf3[28], buf4[28];
@@ -698,7 +684,6 @@ static void SensorUI_UpdateDistances(DistanceSensor_Data *ds)
 	top_y = UI_Y_IF1;
 	bot_y = UI_Y_IF4;
 	mid_y = (u16)((top_y + bot_y) / 2);
-	left_x = 10;
 	right_x = (u16)(cx + 20);
 
 	SensorUI_FormatDistWithFilt(ds, 0, buf1);
@@ -827,6 +812,7 @@ static void Legacy_UI_Loop(void)
 }
 
 // 自定义界面入口（my_gui 占位）
+#if (UI_TEST_MODE == 2)
 static void My_UI_Loop(void)
 {
 	u8 key;
@@ -855,6 +841,7 @@ static void My_UI_Loop(void)
 		delay_ms(10);
 	}
 }
+#endif
 
 int main()
 {	
@@ -866,6 +853,7 @@ int main()
 #elif (UI_TEST_MODE == 1)
 	printf("[BOOT] UI_MODE=1 (arbiter_gui)\r\n");
 	USART3_Init();  // USART2: Jetson 指令接收
+	GPS_USART6_Init(9600); // GPS: 启动默认9600，随后自动配置并切换到115200
 	DistanceSensor_Init();
 	CAN1_Init_RangerMini();
 	Arbiter_Init();
@@ -878,6 +866,7 @@ int main()
 #endif
 	printf("[MOTION] Dist ctrl ON, wait Jetson V3 on USART2(PA2/PA3), beep=%s (KEY1 toggle)\r\n",
 		g_beep_dist_enable ? "ON" : "OFF");
+	printf("[GPS] USART6 RX ready on PC7 (TX=PC6), auto cfg: GPS+BDS 5Hz RMC/GGA/GSA\r\n");
 	
 	// 确保 LCD 初始化完成
 	delay_ms(100);
@@ -898,6 +887,7 @@ int main()
 #elif (UI_TEST_MODE == 2)
 	My_UI_Loop();
 	USART3_Init();  // USART2: Jetson 指令接收
+	GPS_USART6_Init(9600); // GPS: 启动默认9600，随后自动配置并切换到115200
 	DistanceSensor_Init();
 	CAN1_Init_RangerMini();
 	Arbiter_Init();
@@ -907,6 +897,7 @@ int main()
 		(unsigned int)CAN1->MCR, (unsigned int)CAN1->MSR);
 	printf("[MOTION] Dist ctrl ON, wait Jetson V3 on USART2(PA2/PA3), beep=%s (KEY1 toggle)\r\n",
 		g_beep_dist_enable ? "ON" : "OFF");
+	printf("[GPS] USART6 RX ready on PC7 (TX=PC6), auto cfg: GPS+BDS 5Hz RMC/GGA/GSA\r\n");
 	LCD_Clear(BLACK);
 	FRONT_COLOR = WHITE;
 	BACK_COLOR = BLACK;
@@ -936,6 +927,8 @@ void SensorData_ShowScreen(void)
 
 	ControlKey_ToggleSwitch();
 	DistanceSensor_DrainLog();
+	GPS_Process();
+	GPS_PrintStatus();
 
 	/* 处理 Jetson 通过 USART2 发来的 8 字节控制帧 */
 	if(USART3_GetJetsonFrame(jetson_frame))

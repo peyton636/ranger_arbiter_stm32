@@ -29,7 +29,6 @@ void CAN_Test(void)//CAN Communication - RANGER MINI 3.0
 	_btn_obj* sendbtn=0;
 	_btn_obj* modebtn=0;
 	_edit_obj* tedit_mode;
-	_edit_obj* tedit_send;
 	_edit_obj* tedit_recv;
 	_edit_obj* tedit_speed;
 	_edit_obj* tedit_angle;
@@ -39,7 +38,6 @@ void CAN_Test(void)//CAN Communication - RANGER MINI 3.0
 	u8 i=0;
 	u8 mode_set=0;
 	u8 res=0;
-	u8 tbuf[8];
 	u8 rbuf[8];
 	u8 tempbuf[32];
 	u32 can_id=0;

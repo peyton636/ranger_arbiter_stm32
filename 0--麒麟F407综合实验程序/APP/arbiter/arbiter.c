@@ -62,12 +62,17 @@ static void Arbiter_ProcessRecoveringMode(void);
 static void Arbiter_CheckHeartbeat(void);
 static void Arbiter_ProcessDegradedAutonomy(void);
 static void Arbiter_TryRecoverJetsonSpeedInSpeedLimit(void);
+static void Arbiter_LogDynamicSafety(s16 speed_ref, u16 near_dyn, u16 far_dyn,
+	u16 f, u16 b, u16 l, u16 r, u8 obs_f, u8 obs_b, u8 obs_l, u8 obs_r,
+	u8 danger_f, u8 danger_b, u8 danger_l, u8 danger_r);
+static s16 Arbiter_GetSafetyRefSpeed(s16 v_cmd);
+static u16 Arbiter_CalcDynamicFarMm(s16 speed_mm_s);
+static u16 Arbiter_CalcDynamicNearMm(s16 speed_mm_s);
 static u8 Arbiter_IsDangerDist(u16 dist_mm);
 static u8 Arbiter_IsObstacleDist(u16 dist_mm);
 static u8 Arbiter_IsValidDist(u16 dist_mm);
 static u16 Arbiter_SanitizeDist(u16 dist_mm);
 static u16 Arbiter_MinDistance4(u16 a, u16 b, u16 c, u16 d);
-static s16 Arbiter_SteerToSaferSide(u16 left_mm, u8 left_valid, u16 right_mm, u8 right_valid);
 static void Arbiter_ProcessJetsonIntentPolicy(void);
 static u8 Arbiter_IsStopIntent(void);
 static void Arbiter_ApplyStopOutput(void);
@@ -110,11 +115,6 @@ static void Arbiter_PolicyMoveSlide90Ex(s16 slide_angle, s16 speed_mm_s)
 	arb_state.output.v = spd;
 	arb_state.output.steering = slide_angle;
 	arb_state.output.omega = 0;
-}
-
-static void Arbiter_PolicyMoveSlide90(s16 slide_angle)
-{
-	Arbiter_PolicyMoveSlide90Ex(slide_angle, ARB_SLIDE_SPEED_MM_S);
 }
 
 // ============================================================================
@@ -200,20 +200,6 @@ static u16 Arbiter_MinDistance4(u16 a, u16 b, u16 c, u16 d)
 	return minv;
 }
 
-static s16 Arbiter_SteerToSaferSide(u16 left_mm, u8 left_valid, u16 right_mm, u8 right_valid)
-{
-	/* 只朝“有有效数据且更空”的一侧转 */
-	if(left_valid && !right_valid)
-		return ARB_STEER_CMD_LEFT;
-	if(!left_valid && right_valid)
-		return ARB_STEER_CMD_RIGHT;
-	if(!left_valid && !right_valid)
-		return ARB_STEER_CMD_RIGHT;
-	if(right_mm >= left_mm)
-		return ARB_STEER_CMD_RIGHT;
-	return ARB_STEER_CMD_LEFT;
-}
-
 /* 策略比“哪边更空”：UNKNOWN/无效→0(最糟)；FAILSAFE(0)也是 0 */
 static u16 Arbiter_PolicyDist(u16 dist_mm, u8 valid)
 {
@@ -222,34 +208,6 @@ static u16 Arbiter_PolicyDist(u16 dist_mm, u8 valid)
 	if(dist_mm > ARBITER_DIST_MAX_MM)
 		return ARBITER_DIST_FAILSAFE_MM;
 	return dist_mm;
-}
-
-/* 在 back/left/right 中选距离最大：0=后 1=左 2=右 */
-static u8 Arbiter_PickFreestBackLeftRight(u16 b, u8 vb, u16 l, u8 vl, u16 r, u8 vr)
-{
-	u16 db = Arbiter_PolicyDist(b, vb);
-	u16 dl = Arbiter_PolicyDist(l, vl);
-	u16 dr = Arbiter_PolicyDist(r, vr);
-
-	if(db >= dl && db >= dr)
-		return 0;
-	if(dl >= dr)
-		return 1;
-	return 2;
-}
-
-/* 在 front/left/right 中选距离最大：0=前 1=左 2=右 */
-static u8 Arbiter_PickFreestFrontLeftRight(u16 f, u8 vf, u16 l, u8 vl, u16 r, u8 vr)
-{
-	u16 df = Arbiter_PolicyDist(f, vf);
-	u16 dl = Arbiter_PolicyDist(l, vl);
-	u16 dr = Arbiter_PolicyDist(r, vr);
-
-	if(df >= dl && df >= dr)
-		return 0;
-	if(dl >= dr)
-		return 1;
-	return 2;
 }
 
 /* 四向中选距离最大：0=前 1=后 2=左 3=右（R2 等多向有障时用） */
@@ -279,6 +237,14 @@ typedef enum
 	ARB_INTENT_SPIN,
 	ARB_INTENT_ACKERMAN
 } ArbMotionIntent_t;
+
+typedef struct
+{
+	u16 front;
+	u16 back;
+	u16 left;
+	u16 right;
+} SensorWeightPermille_t;
 
 static u8 Arbiter_IsStopIntent(void)
 {
@@ -338,21 +304,191 @@ static ArbMotionIntent_t Arbiter_GetMotionIntent(void)
 	return ARB_INTENT_STOP;
 }
 
-static s32 Arbiter_CalcDistFactorPct(u16 dist_mm, u8 valid)
+static SensorWeightPermille_t Arbiter_GetSensorWeights(ArbMotionIntent_t intent, s16 steer)
 {
+	SensorWeightPermille_t w;
+
+	w.front = ARBITER_WEIGHT_FULL;
+	w.back = ARBITER_WEIGHT_FULL;
+	w.left = ARBITER_WEIGHT_FULL;
+	w.right = ARBITER_WEIGHT_FULL;
+
+	switch(intent)
+	{
+		case ARB_INTENT_FORWARD:
+			w.front = ARBITER_WEIGHT_FULL;
+			w.back = ARBITER_WEIGHT_IGNORE;
+			w.left = ARBITER_WEIGHT_MEDIUM;
+			w.right = ARBITER_WEIGHT_MEDIUM;
+			break;
+		case ARB_INTENT_BACKWARD:
+			w.front = ARBITER_WEIGHT_IGNORE;
+			w.back = ARBITER_WEIGHT_FULL;
+			w.left = ARBITER_WEIGHT_MEDIUM;
+			w.right = ARBITER_WEIGHT_MEDIUM;
+			break;
+		case ARB_INTENT_SLIDE_LEFT:
+			w.front = ARBITER_WEIGHT_HIGH;
+			w.back = ARBITER_WEIGHT_LOW;
+			w.left = ARBITER_WEIGHT_FULL;
+			w.right = ARBITER_WEIGHT_IGNORE;
+			break;
+		case ARB_INTENT_SLIDE_RIGHT:
+			w.front = ARBITER_WEIGHT_HIGH;
+			w.back = ARBITER_WEIGHT_LOW;
+			w.left = ARBITER_WEIGHT_IGNORE;
+			w.right = ARBITER_WEIGHT_FULL;
+			break;
+		case ARB_INTENT_ACKERMAN:
+			if(steer > 0)
+			{
+				w.front = ARBITER_WEIGHT_HIGH;
+				w.back = ARBITER_WEIGHT_LOW;
+				w.left = ARBITER_WEIGHT_FULL;
+				w.right = ARBITER_WEIGHT_LOW;
+			}
+			else if(steer < 0)
+			{
+				w.front = ARBITER_WEIGHT_HIGH;
+				w.back = ARBITER_WEIGHT_LOW;
+				w.left = ARBITER_WEIGHT_LOW;
+				w.right = ARBITER_WEIGHT_FULL;
+			}
+			else
+			{
+				w.front = ARBITER_WEIGHT_FULL;
+				w.back = ARBITER_WEIGHT_IGNORE;
+				w.left = ARBITER_WEIGHT_MEDIUM;
+				w.right = ARBITER_WEIGHT_MEDIUM;
+			}
+			break;
+		default:
+			break;
+	}
+
+	return w;
+}
+
+static u16 Arbiter_WeightedPolicyDist(u16 dist_mm, u8 valid, u16 weight_permille)
+{
+	u16 base = Arbiter_PolicyDist(dist_mm, valid);
+	u32 weighted = ((u32)base * (u32)weight_permille) / ARBITER_WEIGHT_FULL;
+	return (u16)weighted;
+}
+
+static u8 Arbiter_PickFreestBackLeftRightWeighted(u16 b, u8 vb, u16 l, u8 vl, u16 r, u8 vr,
+	const SensorWeightPermille_t *w)
+{
+	u16 db = Arbiter_WeightedPolicyDist(b, vb, w->back);
+	u16 dl = Arbiter_WeightedPolicyDist(l, vl, w->left);
+	u16 dr = Arbiter_WeightedPolicyDist(r, vr, w->right);
+
+	if(db >= dl && db >= dr)
+		return 0;
+	if(dl >= dr)
+		return 1;
+	return 2;
+}
+
+static u8 Arbiter_PickFreestFrontLeftRightWeighted(u16 f, u8 vf, u16 l, u8 vl, u16 r, u8 vr,
+	const SensorWeightPermille_t *w)
+{
+	u16 df = Arbiter_WeightedPolicyDist(f, vf, w->front);
+	u16 dl = Arbiter_WeightedPolicyDist(l, vl, w->left);
+	u16 dr = Arbiter_WeightedPolicyDist(r, vr, w->right);
+
+	if(df >= dl && df >= dr)
+		return 0;
+	if(dl >= dr)
+		return 1;
+	return 2;
+}
+
+static s16 Arbiter_GetSafetyRefSpeed(s16 v_cmd)
+{
+	s16 cmd_abs = Chassis_MotionAbs(v_cmd);
+	s16 fb_abs = Chassis_MotionAbs(arb_state.motion_fb.linear_speed);
+
+	return (cmd_abs >= fb_abs) ? cmd_abs : fb_abs;
+}
+
+static u16 Arbiter_CalcDynamicFarMm(s16 speed_mm_s)
+{
+	u32 v_abs = (u32)Chassis_MotionAbs(speed_mm_s);
+	u32 reaction_dist = (v_abs * ARBITER_SYS_DELAY_MS) / 1000u;
+	u32 braking_dist = (v_abs * v_abs) / (2u * ARBITER_BRAKE_DECEL_MM_S2);
+	u32 safe_dist = reaction_dist + braking_dist + ARBITER_SAFE_MARGIN_MM;
+
+	if(safe_dist < ARBITER_DYNAMIC_FAR_MIN_MM)
+		safe_dist = ARBITER_DYNAMIC_FAR_MIN_MM;
+	if(safe_dist > ARBITER_DYNAMIC_FAR_MAX_MM)
+		safe_dist = ARBITER_DYNAMIC_FAR_MAX_MM;
+
+	return (u16)safe_dist;
+}
+
+static u16 Arbiter_CalcDynamicNearMm(s16 speed_mm_s)
+{
+	u16 far_dyn = Arbiter_CalcDynamicFarMm(speed_mm_s);
+	u16 near_dyn = far_dyn / 3u;
+
+	if(near_dyn < ARBITER_DYNAMIC_NEAR_MIN_MM)
+		near_dyn = ARBITER_DYNAMIC_NEAR_MIN_MM;
+	if(near_dyn > ARBITER_DYNAMIC_NEAR_MAX_MM)
+		near_dyn = ARBITER_DYNAMIC_NEAR_MAX_MM;
+	if(near_dyn >= far_dyn)
+		near_dyn = (far_dyn > 1u) ? (far_dyn - 1u) : ARBITER_DYNAMIC_NEAR_MIN_MM;
+
+	return near_dyn;
+}
+
+/* 低频(500ms)动态阈值日志：便于现场调参 */
+static void Arbiter_LogDynamicSafety(s16 speed_ref, u16 near_dyn, u16 far_dyn,
+	u16 f, u16 b, u16 l, u16 r, u8 obs_f, u8 obs_b, u8 obs_l, u8 obs_r,
+	u8 danger_f, u8 danger_b, u8 danger_l, u8 danger_r)
+{
+	static u32 last_tick = 0;
+
+	if((OSTime - last_tick) < ARB_MS_TO_TICKS(500))
+		return;
+	last_tick = OSTime;
+
+	printf("[SAFE] mode=%s v_ref=%d danger=%u limit=%u | "
+	       "F=%u obs=%d dng=%d  B=%u obs=%d dng=%d  L=%u obs=%d dng=%d  R=%u obs=%d dng=%d\r\n",
+	       ARBITER_MODE_NAMES[arb_state.current_mode],
+	       (int)speed_ref,
+	       (unsigned int)near_dyn,
+	       (unsigned int)far_dyn,
+	       (unsigned int)f, (int)obs_f, (int)danger_f,
+	       (unsigned int)b, (int)obs_b, (int)danger_b,
+	       (unsigned int)l, (int)obs_l, (int)danger_l,
+	       (unsigned int)r, (int)obs_r, (int)danger_r);
+}
+
+static s32 Arbiter_CalcDistFactorPct(u16 dist_mm, u8 valid, s16 speed_ref_mm_s)
+{
+	u16 near_dyn;
+	u16 far_dyn;
+
 	if(!valid || dist_mm == ARBITER_DIST_UNKNOWN)
 		return 0;
-	if(dist_mm <= ARBITER_OBSTACLE_NEAR_MM)
+
+	near_dyn = Arbiter_CalcDynamicNearMm(speed_ref_mm_s);
+	far_dyn = Arbiter_CalcDynamicFarMm(speed_ref_mm_s);
+	if(near_dyn >= far_dyn)
 		return 0;
-	if(dist_mm >= ARBITER_OBSTACLE_FAR_MM)
+	if(dist_mm <= near_dyn)
+		return 0;
+	if(dist_mm >= far_dyn)
 		return 100;
-	return ((s32)dist_mm - (s32)ARBITER_OBSTACLE_NEAR_MM) * 100 /
-	       ((s32)ARBITER_OBSTACLE_FAR_MM - (s32)ARBITER_OBSTACLE_NEAR_MM);
+	return ((s32)dist_mm - (s32)near_dyn) * 100 /
+	       ((s32)far_dyn - (s32)near_dyn);
 }
 
 static s16 Arbiter_ScaleJetsonVByDist(s16 v_cmd, u16 dist_mm, u8 valid)
 {
-	s32 pct = Arbiter_CalcDistFactorPct(dist_mm, valid);
+	s16 speed_ref = Arbiter_GetSafetyRefSpeed(v_cmd);
+	s32 pct = Arbiter_CalcDistFactorPct(dist_mm, valid, speed_ref);
 	s32 scaled = ((s32)v_cmd * pct) / 100;
 
 	return Arbiter_ClampSpeed((s16)scaled);
@@ -482,6 +618,9 @@ static void Arbiter_ApplyForwardIntent(u16 f, u8 vf, u16 b, u8 vb,
 	u16 l, u8 vl, u16 r, u8 vr, u8 obs_f, u8 danger_f)
 {
 	JetsonCmd_t *cmd = &arb_state.jetson_cmd;
+	SensorWeightPermille_t w = Arbiter_GetSensorWeights(ARB_INTENT_FORWARD, cmd->steer);
+	u16 near_dyn = Arbiter_CalcDynamicNearMm(Arbiter_GetSafetyRefSpeed(cmd->v));
+	u16 far_dyn = Arbiter_CalcDynamicFarMm(Arbiter_GetSafetyRefSpeed(cmd->v));
 
 	if(!obs_f && !danger_f)
 	{
@@ -490,7 +629,7 @@ static void Arbiter_ApplyForwardIntent(u16 f, u8 vf, u16 b, u8 vb,
 		arb_state.output.steering = cmd->steer;
 		return;
 	}
-	if(vf && !danger_f && f > ARBITER_OBSTACLE_NEAR_MM && f <= ARBITER_OBSTACLE_FAR_MM)
+	if(vf && !danger_f && f > near_dyn && f <= far_dyn)
 	{
 		arb_last_policy_rule = 11;
 		Arbiter_PolicySetAckermannStraight(Arbiter_JetsonForwardSpeed(f, vf));
@@ -499,7 +638,7 @@ static void Arbiter_ApplyForwardIntent(u16 f, u8 vf, u16 b, u8 vb,
 	}
 	/* 前向受阻：绕行，前方空出后下一周期自动回到 rule 11/12 */
 	arb_last_policy_rule = 6;
-	switch(Arbiter_PickFreestBackLeftRight(b, vb, l, vl, r, vr))
+	switch(Arbiter_PickFreestBackLeftRightWeighted(b, vb, l, vl, r, vr, &w))
 	{
 		case 0:
 			Arbiter_PolicySetAckermannStraight(Arbiter_JetsonBackwardSpeed(
@@ -518,6 +657,9 @@ static void Arbiter_ApplyBackwardIntent(u16 f, u8 vf, u16 b, u8 vb,
 	u16 l, u8 vl, u16 r, u8 vr, u8 obs_b, u8 danger_b)
 {
 	JetsonCmd_t *cmd = &arb_state.jetson_cmd;
+	SensorWeightPermille_t w = Arbiter_GetSensorWeights(ARB_INTENT_BACKWARD, cmd->steer);
+	u16 near_dyn = Arbiter_CalcDynamicNearMm(Arbiter_GetSafetyRefSpeed(cmd->v));
+	u16 far_dyn = Arbiter_CalcDynamicFarMm(Arbiter_GetSafetyRefSpeed(cmd->v));
 
 	if(!obs_b && !danger_b)
 	{
@@ -526,7 +668,7 @@ static void Arbiter_ApplyBackwardIntent(u16 f, u8 vf, u16 b, u8 vb,
 		arb_state.output.steering = cmd->steer;
 		return;
 	}
-	if(vb && !danger_b && b > ARBITER_OBSTACLE_NEAR_MM && b <= ARBITER_OBSTACLE_FAR_MM)
+	if(vb && !danger_b && b > near_dyn && b <= far_dyn)
 	{
 		arb_last_policy_rule = 7;
 		Arbiter_PolicySetAckermannStraight(Arbiter_JetsonBackwardSpeed(b, vb));
@@ -534,7 +676,7 @@ static void Arbiter_ApplyBackwardIntent(u16 f, u8 vf, u16 b, u8 vb,
 		return;
 	}
 	arb_last_policy_rule = 7;
-	switch(Arbiter_PickFreestFrontLeftRight(f, vf, l, vl, r, vr))
+	switch(Arbiter_PickFreestFrontLeftRightWeighted(f, vf, l, vl, r, vr, &w))
 	{
 		case 0:
 			Arbiter_PolicySetAckermannStraight(Arbiter_JetsonForwardSpeed(f, vf));
@@ -552,6 +694,7 @@ static void Arbiter_ApplySlideLeftIntent(u16 f, u8 vf, u16 b, u8 vb,
 	u8 obs_l, u8 danger_l, u8 obs_r, u8 danger_r)
 {
 	s16 spd = Arbiter_JetsonSlideSpeed();
+	SensorWeightPermille_t w = Arbiter_GetSensorWeights(ARB_INTENT_SLIDE_LEFT, arb_state.jetson_cmd.steer);
 
 	if(!obs_l && !danger_l)
 	{
@@ -565,7 +708,7 @@ static void Arbiter_ApplySlideLeftIntent(u16 f, u8 vf, u16 b, u8 vb,
 		Arbiter_PolicyMoveSlide90Ex(ARB_SLIDE_CMD_RIGHT, spd);
 		return;
 	}
-	if(Arbiter_PolicyDist(f, vf) >= Arbiter_PolicyDist(b, vb))
+	if(Arbiter_WeightedPolicyDist(f, vf, w.front) >= Arbiter_WeightedPolicyDist(b, vb, w.back))
 	{
 		arb_last_policy_rule = 10;
 		Arbiter_PolicySetAckermannStraight(Arbiter_JetsonForwardSpeed(f, vf));
@@ -581,6 +724,7 @@ static void Arbiter_ApplySlideRightIntent(u16 f, u8 vf, u16 b, u8 vb,
 	u8 obs_l, u8 danger_l, u8 obs_r, u8 danger_r)
 {
 	s16 spd = Arbiter_JetsonSlideSpeed();
+	SensorWeightPermille_t w = Arbiter_GetSensorWeights(ARB_INTENT_SLIDE_RIGHT, arb_state.jetson_cmd.steer);
 
 	if(!obs_r && !danger_r)
 	{
@@ -594,7 +738,7 @@ static void Arbiter_ApplySlideRightIntent(u16 f, u8 vf, u16 b, u8 vb,
 		Arbiter_PolicyMoveSlide90Ex(ARB_SLIDE_CMD_LEFT, spd);
 		return;
 	}
-	if(Arbiter_PolicyDist(f, vf) >= Arbiter_PolicyDist(b, vb))
+	if(Arbiter_WeightedPolicyDist(f, vf, w.front) >= Arbiter_WeightedPolicyDist(b, vb, w.back))
 	{
 		arb_last_policy_rule = 10;
 		Arbiter_PolicySetAckermannStraight(Arbiter_JetsonForwardSpeed(f, vf));
@@ -665,6 +809,9 @@ static void Arbiter_ProcessJetsonIntentPolicy(void)
 	u16 b = arb_state.obstacle_dist.back;
 	u16 l = arb_state.obstacle_dist.left;
 	u16 r = arb_state.obstacle_dist.right;
+	s16 speed_ref = Arbiter_GetSafetyRefSpeed(arb_state.jetson_cmd.v);
+	u16 near_dyn = Arbiter_CalcDynamicNearMm(speed_ref);
+	u16 far_dyn = Arbiter_CalcDynamicFarMm(speed_ref);
 	u8 valid_f = (arb_state.obstacle_valid_mask & 0x01) ? 1 : 0;
 	u8 valid_b = (arb_state.obstacle_valid_mask & 0x02) ? 1 : 0;
 	u8 valid_l = (arb_state.obstacle_valid_mask & 0x04) ? 1 : 0;
@@ -676,14 +823,17 @@ static void Arbiter_ProcessJetsonIntentPolicy(void)
 	arb_state.output.emergency = 0;
 	arb_state.output.omega = 0;
 
-	obs_f = valid_f ? Arbiter_IsObstacleDist(f) : 1;
-	obs_b = valid_b ? Arbiter_IsObstacleDist(b) : 1;
-	obs_l = valid_l ? Arbiter_IsObstacleDist(l) : 1;
-	obs_r = valid_r ? Arbiter_IsObstacleDist(r) : 1;
-	danger_f = valid_f ? Arbiter_IsDangerDist(f) : 1;
-	danger_b = valid_b ? Arbiter_IsDangerDist(b) : 1;
-	danger_l = valid_l ? Arbiter_IsDangerDist(l) : 1;
-	danger_r = valid_r ? Arbiter_IsDangerDist(r) : 1;
+	/* 方案A：仅策略层用动态阈值；安全硬判定(AllDirectionsDanger)仍走固定NEAR */
+	obs_f = valid_f ? ((f != ARBITER_DIST_UNKNOWN && f <= far_dyn) ? 1 : 0) : 1;
+	obs_b = valid_b ? ((b != ARBITER_DIST_UNKNOWN && b <= far_dyn) ? 1 : 0) : 1;
+	obs_l = valid_l ? ((l != ARBITER_DIST_UNKNOWN && l <= far_dyn) ? 1 : 0) : 1;
+	obs_r = valid_r ? ((r != ARBITER_DIST_UNKNOWN && r <= far_dyn) ? 1 : 0) : 1;
+	danger_f = valid_f ? ((f != ARBITER_DIST_UNKNOWN && f <= near_dyn) ? 1 : 0) : 1;
+	danger_b = valid_b ? ((b != ARBITER_DIST_UNKNOWN && b <= near_dyn) ? 1 : 0) : 1;
+	danger_l = valid_l ? ((l != ARBITER_DIST_UNKNOWN && l <= near_dyn) ? 1 : 0) : 1;
+	danger_r = valid_r ? ((r != ARBITER_DIST_UNKNOWN && r <= near_dyn) ? 1 : 0) : 1;
+	Arbiter_LogDynamicSafety(speed_ref, near_dyn, far_dyn, f, b, l, r,
+		obs_f, obs_b, obs_l, obs_r, danger_f, danger_b, danger_l, danger_r);
 
 	if((arb_state.obstacle_valid_mask & 0x0F) == 0)
 	{
@@ -910,6 +1060,7 @@ void Arbiter_SetObstacleDistances(u16 front_mm, u16 back_mm, u16 left_mm, u16 ri
 	u8 valid_b = Arbiter_IsValidDist(back_mm);
 	u8 valid_l = Arbiter_IsValidDist(left_mm);
 	u8 valid_r = Arbiter_IsValidDist(right_mm);
+	u16 far_dyn = Arbiter_CalcDynamicFarMm(Arbiter_GetSafetyRefSpeed(arb_state.jetson_cmd.v));
 
 	arb_state.obstacle_dist.front = Arbiter_SanitizeDist(front_mm);
 	arb_state.obstacle_dist.back = Arbiter_SanitizeDist(back_mm);
@@ -927,9 +1078,9 @@ void Arbiter_SetObstacleDistances(u16 front_mm, u16 back_mm, u16 left_mm, u16 ri
 		arb_state.obstacle_dist.left,
 		arb_state.obstacle_dist.right);
 
-	/* 仅在有已知最近距且进入限速区时视为有障碍 */
+	/* 动态 FAR：速度越高，越提前进入限速区 */
 	arb_state.obstacle_detected = (arb_state.nearest_dist != ARBITER_DIST_UNKNOWN &&
-		arb_state.nearest_dist <= ARBITER_OBSTACLE_FAR_MM) ? 1 : 0;
+		arb_state.nearest_dist <= far_dyn) ? 1 : 0;
 }
 
 /*******************************************************************************
