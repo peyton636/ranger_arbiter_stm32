@@ -36,3 +36,13 @@
 .\obj\systick.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h
 .\obj\systick.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h
 .\obj\systick.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
+.\obj\systick.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\obj\systick.o: .\User\FreeRTOSConfig.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\include\projdefs.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\include\portable.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\include\deprecated_definitions.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F\portmacro.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\include\mpu_wrappers.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\include\task.h
+.\obj\systick.o: .\Middlewares\FreeRTOS\include\list.h

@@ -26,6 +26,34 @@ typedef struct
 
 static DsChannelFilter_t ds_filter[4];
 static volatile u8 ds_log_rx_timeout = 0;
+static u8 ds_boot_fast_remain = DS_BOOT_FAST_TRIG_COUNT;
+static u8 ds_first_trig_done = 0;
+static u8 ds_timeout_streak[4];
+
+/* 原始 16bit 距离 → error 标记 + 归一化存储值 */
+static void DistanceSensor_ClassifyRaw(u16 raw, u8 *err, u16 *store_mm)
+{
+	if(raw == DS_DIST_MOD_ERR_MARKER)
+	{
+		*err = DS_ERR_CHKFAIL;
+		*store_mm = DS_DIST_FAILSAFE_MM;
+	}
+	else if(raw == 0 || raw == DS_DIST_MOD_TIMEOUT_RAW || raw >= DS_DIST_MOD_TIMEOUT_MIN)
+	{
+		*err = DS_ERR_TIMEOUT;
+		*store_mm = DS_DIST_FAILSAFE_MM;
+	}
+	else if(raw > DS_DIST_VALID_MAX_MM)
+	{
+		*err = DS_ERR_TIMEOUT;
+		*store_mm = DS_DIST_FAILSAFE_MM;
+	}
+	else
+	{
+		*err = DS_ERR_NONE;
+		*store_mm = raw;
+	}
+}
 
 static u16 DistanceSensor_AbsDiffU16(u16 a, u16 b)
 {
@@ -82,7 +110,7 @@ static u8 DistanceSensor_FilterIsPlausible(u16 mm)
 {
 	if(DistanceSensor_FilterSampleKind(mm) != 0)
 		return 0;
-	if(mm < DS_DIST_MIN_VALID_MM || mm > DS_SPIKE_ABS_MAX_MM)
+	if(mm < DS_DIST_MIN_VALID_MM || mm > DS_DIST_MAX_MM)
 		return 0;
 	return 1;
 }
@@ -90,14 +118,18 @@ static u8 DistanceSensor_FilterIsPlausible(u16 mm)
 static u8 DistanceSensor_FilterIsSpikeJump(u16 mm, u16 valid_buf[], u8 n_valid, u16 stable_mm)
 {
 	u16 med;
+	u16 ref;
 
-	if(n_valid < 2)
-		return 0;
-	/* 相对 stable 在远离：合法运动，不做突跳拒收 */
-	if(stable_mm != DS_DIST_UNKNOWN && mm > stable_mm)
+	if(n_valid < 1)
 		return 0;
 	med = DistanceSensor_FilterMedian(valid_buf, n_valid);
-	if(DistanceSensor_AbsDiffU16(mm, med) > DS_FILTER_SPIKE_JUMP_MM)
+	ref = med;
+	if(stable_mm != DS_DIST_UNKNOWN)
+	{
+		if(DistanceSensor_AbsDiffU16(mm, stable_mm) < DistanceSensor_AbsDiffU16(mm, med))
+			ref = stable_mm;
+	}
+	if(DistanceSensor_AbsDiffU16(mm, ref) > DS_FILTER_SPIKE_JUMP_MM)
 		return 1;
 	return 0;
 }
@@ -215,7 +247,24 @@ static void DistanceSensor_FilterOnNewFrame(void)
 	u8 i;
 
 	for(i = 0; i < 4; i++)
-		DistanceSensor_FilterPushChannel(i, DistanceSensor_NormalizedMm(i));
+	{
+		if(ds_data.error[i] == DS_ERR_NONE)
+		{
+			ds_timeout_streak[i] = 0;
+			DistanceSensor_FilterPushChannel(i, ds_data.dist[i]);
+		}
+		else
+		{
+			if(ds_timeout_streak[i] < 255)
+				ds_timeout_streak[i]++;
+			if(ds_timeout_streak[i] >= DS_FILTER_TIMEOUT_CLEAR_N)
+			{
+				ds_filter[i].count = 0;
+				ds_filter[i].stable_valid = 0;
+				ds_filter[i].stable_mm = DS_DIST_UNKNOWN;
+			}
+		}
+	}
 }
 
 void DistanceSensor_Init(void)
@@ -223,6 +272,7 @@ void DistanceSensor_Init(void)
 	GPIO_InitTypeDef GPIO_InitStructure;
 	USART_InitTypeDef USART_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
+	u8 i;
 
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
@@ -261,7 +311,18 @@ void DistanceSensor_Init(void)
 	ds_frame_ready = 0;
 	ds_data.valid = 0;
 	ds_process_tick = 0;
+	ds_boot_fast_remain = DS_BOOT_FAST_TRIG_COUNT;
+	ds_first_trig_done = 0;
+	for(i = 0; i < 4; i++)
+		ds_timeout_streak[i] = 0;
 	DistanceSensor_FilterReset();
+
+	printf("[DS] Init OK, trig: boot %ux%dms then %ums, valid 30~%u TO>=%u\r\n",
+		(unsigned)DS_BOOT_FAST_TRIG_COUNT,
+		(unsigned)(DS_BOOT_FAST_TRIG_TICKS * DS_PROCESS_MS),
+		(unsigned)DS_TRIG_INTERVAL_MS,
+		(unsigned)DS_DIST_VALID_MAX_MM,
+		(unsigned)DS_DIST_MOD_TIMEOUT_MIN);
 }
 
 void DistanceSensor_Process(void)
@@ -274,8 +335,21 @@ void DistanceSensor_Process(void)
 	ds_process_tick++;
 	tick++;
 
-	/* 到周期则武装；若仍在收帧则推迟，避免 ds_rx_idx 被清导致 IF4 TIMEOUT */
-	if(tick >= DS_TRIG_EVERY_N_TICKS)
+	if(!ds_first_trig_done)
+	{
+		ds_first_trig_done = 1;
+		trig_armed = 1;
+	}
+	else if(ds_boot_fast_remain > 0)
+	{
+		if(tick >= DS_BOOT_FAST_TRIG_TICKS)
+		{
+			tick = 0;
+			ds_boot_fast_remain--;
+			trig_armed = 1;
+		}
+	}
+	else if(tick >= DS_TRIG_EVERY_N_TICKS)
 	{
 		tick = 0;
 		trig_armed = 1;
@@ -356,31 +430,11 @@ void USART3_IRQHandler(void)
 				if((sum & 0xFF) == ds_rx_buf[DS_FRAME_LEN - 1])
 				{
 					ds_data.valid = 1;
-					ds_data.dist[0] = (ds_rx_buf[1] << 8) | ds_rx_buf[2];
-					ds_data.dist[1] = (ds_rx_buf[3] << 8) | ds_rx_buf[4];
-					ds_data.dist[2] = (ds_rx_buf[5] << 8) | ds_rx_buf[6];
-					ds_data.dist[3] = (ds_rx_buf[7] << 8) | ds_rx_buf[8];
-
 					for(i = 0; i < 4; i++)
 					{
-						/* 原始异常 → error + 归一化为 0(FAILSAFE) */
-						if(ds_data.dist[i] == 0xEEEE)
-						{
-							ds_data.error[i] = DS_ERR_CHKFAIL;
-							ds_data.dist[i] = DS_DIST_FAILSAFE_MM;
-						}
-						else if(ds_data.dist[i] == 0xFFFF || ds_data.dist[i] == 0 ||
-								ds_data.dist[i] > DS_DIST_MAX_MM)
-						{
-							ds_data.error[i] = DS_ERR_TIMEOUT;
-							ds_data.dist[i] = DS_DIST_FAILSAFE_MM;
-						}
-						else
-						{
-							ds_data.error[i] = DS_ERR_NONE;
-						}
+						u16 raw = (ds_rx_buf[1 + i * 2] << 8) | ds_rx_buf[2 + i * 2];
+						DistanceSensor_ClassifyRaw(raw, &ds_data.error[i], &ds_data.dist[i]);
 					}
-
 					ds_frame_ready = 1;
 				}
 				ds_rx_idx = 0;
@@ -418,10 +472,63 @@ void DistanceSensor_DrainLog(void)
 	}
 }
 
+void DistanceSensor_FormatLane(u8 idx, char *buf, u16 buf_sz)
+{
+	if(buf == NULL || buf_sz == 0)
+		return;
+	if(idx >= 4)
+	{
+		buf[0] = '\0';
+		return;
+	}
+	if(!ds_data.valid)
+	{
+		snprintf(buf, buf_sz, "---");
+		return;
+	}
+	if(ds_data.error[idx] == DS_ERR_TIMEOUT)
+		snprintf(buf, buf_sz, "TO");
+	else if(ds_data.error[idx] == DS_ERR_CHKFAIL)
+		snprintf(buf, buf_sz, "ERR");
+	else if(ds_data.dist[idx] == DS_DIST_FAILSAFE_MM)
+		snprintf(buf, buf_sz, "0");
+	else
+		snprintf(buf, buf_sz, "%u mm", (unsigned int)ds_data.dist[idx]);
+}
+
+void DistanceSensor_FormatFilteredLane(u8 idx, char *buf, u16 buf_sz)
+{
+	u16 d;
+
+	if(buf == NULL || buf_sz == 0)
+		return;
+	if(idx >= 4)
+	{
+		buf[0] = '\0';
+		return;
+	}
+	/* 本帧该路已失效：Filt 也不沿用旧值 */
+	if(ds_data.valid &&
+	   (ds_data.error[idx] == DS_ERR_TIMEOUT || ds_data.error[idx] == DS_ERR_CHKFAIL))
+	{
+		DistanceSensor_FormatLane(idx, buf, buf_sz);
+		return;
+	}
+	d = DistanceSensor_GetFilteredMm(idx);
+	if(d == DS_DIST_UNKNOWN)
+		snprintf(buf, buf_sz, "---");
+	else if(d == DS_DIST_FAILSAFE_MM)
+		snprintf(buf, buf_sz, "0");
+	else
+		snprintf(buf, buf_sz, "%u mm", (unsigned int)d);
+}
+
 void DistanceSensor_Print(void)
 {
 	u8 i;
 	char ts[20];
+	char lane[16];
+	char ff[16], bb[16], ll[16], rr[16];
 
 	Log_TsPrefix(ts, sizeof(ts));
 
@@ -433,33 +540,14 @@ void DistanceSensor_Print(void)
 
 	for(i = 0; i < 4; i++)
 	{
-		if(ds_data.error[i] == DS_ERR_TIMEOUT)
-		{
-			printf("%s[DS] IF%d: TIMEOUT\r\n", ts, i + 1);
-		}
-		else if(ds_data.error[i] == DS_ERR_CHKFAIL)
-		{
-			printf("%s[DS] IF%d: CHK ERR\r\n", ts, i + 1);
-		}
-		else
-		{
-			printf("%s[DS] IF%d: %d mm\r\n", ts, i + 1, ds_data.dist[i]);
-		}
+		DistanceSensor_FormatLane(i, lane, sizeof(lane));
+		printf("%s[DS] IF%d: %s\r\n", ts, i + 1, lane);
 	}
-	{
-		char ff[8], bb[8], ll[8], rr[8];
-		u16 d;
-
-		d = DistanceSensor_GetFilteredMm(0);
-		if(d == DS_DIST_UNKNOWN) sprintf(ff, "---"); else sprintf(ff, "%u", (unsigned int)d);
-		d = DistanceSensor_GetFilteredMm(1);
-		if(d == DS_DIST_UNKNOWN) sprintf(bb, "---"); else sprintf(bb, "%u", (unsigned int)d);
-		d = DistanceSensor_GetFilteredMm(2);
-		if(d == DS_DIST_UNKNOWN) sprintf(ll, "---"); else sprintf(ll, "%u", (unsigned int)d);
-		d = DistanceSensor_GetFilteredMm(3);
-		if(d == DS_DIST_UNKNOWN) sprintf(rr, "---"); else sprintf(rr, "%u", (unsigned int)d);
-		printf("%s[DS] Filt F=%s B=%s L=%s R=%s\r\n", ts, ff, bb, ll, rr);
-	}
+	DistanceSensor_FormatFilteredLane(0, ff, sizeof(ff));
+	DistanceSensor_FormatFilteredLane(1, bb, sizeof(bb));
+	DistanceSensor_FormatFilteredLane(2, ll, sizeof(ll));
+	DistanceSensor_FormatFilteredLane(3, rr, sizeof(rr));
+	printf("%s[DS] Filt F=%s B=%s L=%s R=%s\r\n", ts, ff, bb, ll, rr);
 	printf("---\r\n");
 }
 

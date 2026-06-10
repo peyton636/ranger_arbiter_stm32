@@ -1,4 +1,5 @@
 #include "beep.h"
+#include "SysTick.h"
 
 // 蜂鸣器状态
 static u8 beep_enabled = 0;

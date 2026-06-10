@@ -43,7 +43,12 @@
 #include "usart3.h"
 #include "gps.h"
 #include "stdio.h"
+#include "freertos_app.h"
+#include "app_boot.h"
 
+/* 界面分流：0=legacy  1=arbiter(运动控制)  2=my_gui */
+#define UI_TEST_MODE             1
+#define CHASSIS_CAN_MOTION_TEST  0
 
 // 版本号定义
 u8 VERSION[]="HARDWARE:V1.0   SOFTWARE:V1.2";
@@ -286,32 +291,44 @@ REINIT:// 重新初始化
  	LCD_ShowxNum(5+8*(fsize/2),ypos+fsize*j,temp,5,fsize,0);					// 显示 SD 卡容量大小
 	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,stastr);	// SD 状态
 	// W25Q128 检测：若无文件系统则自动创建
-	temp=0;	
- 	do
+	temp=0;
+	do
 	{
 		temp++;
- 		res=fatfs_getfree("1:",&dtsize,&dfsize);// 获取 FLASH 剩余容量信息
-		delay_ms(200);		   
-	}while(res&&temp<20);// 最多尝试 20 次
-	if(res==0X0D)// 文件系统错误
+		res=fatfs_getfree("1:",&dtsize,&dfsize);
+		delay_ms(200);
+	}while(res&&temp<20);
+	if(res==FR_NO_FILESYSTEM)
 	{
-		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk Formatting...");	// 格式化 FLASH
-		res=f_mkfs("1:",1,4096);// 格式化 FLASH，1=盘符，4096=簇大小
+		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk Formatting...");
+		res=f_mkfs("1:",1,4096);
 		if(res==0)
 		{
-			f_setlabel((const TCHAR *)"1:PRECHIN");	// 设置 Flash 磁盘卷标为 PRECHIN
-			LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize, "OK");// 标记格式化成功
- 			res=fatfs_getfree("1:",&dtsize,&dfsize);// 重新获取容量
+			f_setlabel((const TCHAR *)"1:PRECHIN");
+			f_mount(fs[1],"1:",1);
+			res=fatfs_getfree("1:",&dtsize,&dfsize);
+			if(res==0)
+				LCD_ShowString(5+okoffset,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "OK");
 		}
-	}   
-	if(res==0)// 获取 FLASH 剩余容量成功
+		else
+		{
+			printf("[FAT] mkfs 1: failed, err=%u\r\n", (unsigned)res);
+		}
+	}
+	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk:     KB");
+	if(res==0)
 	{
-		gui_phy.memdevflag|=1<<1;	// 设置 SPI FLASH 标志位
-		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk:     KB");//FATFS   			   
-		temp=dtsize; 	   
- 	}else system_error_show(5,ypos+fsize*(j+1),"Flash Fat Error!",fsize);	// flash 文件系统错误
- 	LCD_ShowxNum(5+11*(fsize/2),ypos+fsize*j,temp,5,fsize,0);						// 显示 FLASH 容量大小
-	LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,"OK");			// FLASH 状态
+		gui_phy.memdevflag|=1<<1;
+		temp=dtsize;
+		LCD_ShowxNum(5+11*(fsize/2),ypos+fsize*j,temp,5,fsize,0);
+		LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,"OK");
+	}
+	else
+	{
+		temp=0;
+		LCD_ShowxNum(5+11*(fsize/2),ypos+fsize*j,temp,5,fsize,0);
+		system_error_show(5,ypos+fsize*(j+1),"Flash Fat Error!",fsize);
+	}
 	// TPAD 检测
  	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "TPAD Check...");			   
 // 	if(Touch_Key_Init(4))system_error_show(5,ypos+fsize*(j+1),"TPAD Error!",fsize);// 触摸按键检测
@@ -407,370 +424,7 @@ extern void Wireless_APP_Test(void);
 extern void Phone_APP_Test(void);
 extern void Qrcode_APP_Test(void);
 
-// 传感器数据刷屏显示函数
-void SensorData_ShowScreen(void);
-
-// LCD 固定布局（16号字体，行高16px）
-#define UI_X          5
-#define UI_FS         16
-#define UI_Y_TITLE    20
-#define UI_Y_COUNT    42
-#define UI_Y_DIST_HDR 64
-#define UI_Y_IF1      80
-#define UI_Y_IF2      96
-#define UI_Y_IF3      112
-#define UI_Y_IF4      128
-#define UI_Y_CHASSIS  144
-#define UI_Y_MOTION_FB  160   /* 底盘反馈运动状态（0x221/0x291） */
-#define UI_Y_MOTION_CMD 176   /* 下发指令运动状态（output/0x111） */
-#define UI_Y_WHEELS1  192     /* LF / RF */
-#define UI_Y_WHEELS2  208     /* LR / RR */
-#define UI_Y_BATT     224
-#define UI_Y_BEEP     240
-#define UI_X_VAL      45
-#define UI_CAN_LCD_DIV 30   // 约300ms刷新底盘区，减轻串口/LCD负担
-#define UI_LINE_W     230   // 固定行宽，避免数字长短不一跳动
-#define CRUISE_SPEED_MM_S  300   // 无Jetson时默认前进速度 mm/s
-#define ARBITER_CAN_DIV    2     // 主循环10ms×2=20ms发一次0x111
-// IF1~IF4 到车体方向映射（须与 LCD 布局及 distance_sensor 打印 F/B/L/R 一致）
-// 默认：IF1=前(屏上) IF2=后(屏下) IF3=左 IF4=右
-// 验证：手挡正前/正后/左/右，看 IF 编号与 F/B/L/R 是否对应；不对则只改下面四行
-#define DS_IDX_FRONT   0
-#define DS_IDX_BACK    1
-#define DS_IDX_LEFT    2
-#define DS_IDX_RIGHT   3
-// 界面分流开关：
-// 0 = 旧版图标界面（legacy_gui）
-// 1 = 传感器/仲裁界面（arbiter_gui）
-// 2 = 自定义界面占位（my_gui）
-#define UI_TEST_MODE       1
-/* 上电 CAN 底盘测试：1=解驻车+左转，排查 CAN/动作用；0=关闭（正常运行） */
-#define CHASSIS_CAN_MOTION_TEST  0
-
-static u8 sensor_ui_inited = 0;
-static u8 g_beep_dist_enable = 0;   // 距离蜂鸣开关：默认关，KEY1切换
-static u16 g_nearest_dist_mm = DS_DIST_UNKNOWN;
-static u16 g_front_dist_mm = DS_DIST_UNKNOWN;
-static u16 g_back_dist_mm = DS_DIST_UNKNOWN;
-static u16 g_left_dist_mm = DS_DIST_UNKNOWN;
-static u16 g_right_dist_mm = DS_DIST_UNKNOWN;
-static u8 g_beep_ui_dirty = 0;
-static u8 g_force_stop_enable = 0;  // KEY0 强制停车开关：1=强制停，0=恢复仲裁
-static u8 g_force_stop_ui_dirty = 1;
-
-static void SensorUI_UpdateForceStopBanner(void);
-
-// KEY0/KEY1 按键处理：KEY0=强制停车切换，KEY1=蜂鸣开关切换
-static void ControlKey_ToggleSwitch(void)
-{
-	u8 key;
-
-	key = KEY_Scan(0);
-	if(key == KEY0_PRESS)
-	{
-		g_force_stop_enable = !g_force_stop_enable;
-		g_beep_ui_dirty = 1;
-		g_force_stop_ui_dirty = 1;
-		if(g_force_stop_enable)
-		{
-			arb_state.output.v = 0;
-			arb_state.output.omega = 0;
-			arb_state.output.steering = 0;
-			arb_state.output.mode = ARBITER_MODE_EMERGENCY;
-			arb_state.output.emergency = 1;
-			BEEP_SetVolume(0);
-			printf("[CTRL] FORCE STOP ON (KEY0)\r\n");
-		}
-		else
-		{
-			/* 解除强停后重启仲裁状态机，重新进入常规流程 */
-			Arbiter_Init();
-			Arbiter_EnableCANMode();
-			printf("[CTRL] FORCE STOP OFF -> Arbiter restart (KEY0)\r\n");
-		}
-		delay_ms(200);
-		return;
-	}
-
-	if(key == KEY1_PRESS)
-	{
-		g_beep_dist_enable = !g_beep_dist_enable;
-		if(!g_beep_dist_enable)
-			BEEP_SetVolume(0);
-		g_beep_ui_dirty = 1;
-		printf("[BEEP] Distance alert %s (KEY1 toggle)\r\n",
-			g_beep_dist_enable ? "ON" : "OFF");
-		delay_ms(200);
-	}
-}
-
-// 根据最近距离更新蜂鸣器音量（main 内实现，受 g_beep_dist_enable 控制）
-static void Beep_UpdateByDistance(u16 nearest_mm)
-{
-	u8 vol;
-
-	if(!g_beep_dist_enable || nearest_mm == DS_DIST_UNKNOWN)
-	{
-		BEEP_SetVolume(0);
-		return;
-	}
-
-	if(nearest_mm >= ARBITER_OBSTACLE_FAR_MM)
-	{
-		vol = 0;
-	}
-	else if(nearest_mm < ARBITER_OBSTACLE_WARN_MM)
-	{
-		vol = 100;
-	}
-	else
-	{
-		vol = 20 + (u8)((ARBITER_OBSTACLE_FAR_MM - nearest_mm) * 60 /
-			(ARBITER_OBSTACLE_FAR_MM - ARBITER_OBSTACLE_WARN_MM));
-	}
-
-	BEEP_SetVolume(vol);
-}
-
-// 距离避障运动控制：更新障碍物距离 + 仲裁 + CAN下发
-static void Motion_ControlByDistance(void)
-{
-	static u16 can_send_div = 0;
-
-	if(g_force_stop_enable)
-	{
-		/* 强制停车：忽略 Jetson/避障策略，仅周期下发 0 速度 */
-		arb_state.output.v = 0;
-		arb_state.output.omega = 0;
-		arb_state.output.steering = 0;
-		arb_state.output.mode = ARBITER_MODE_EMERGENCY;
-		arb_state.output.emergency = 1;
-		can_send_div++;
-		if(can_send_div >= ARBITER_CAN_DIV)
-		{
-			can_send_div = 0;
-			Arbiter_SendToSTM32A();
-		}
-		return;
-	}
-
-	/* 无 Jetson 真实帧时不注入本地巡航，保持 v=0 停车（由仲裁 DEGRADED 处理） */
-	Arbiter_SetObstacleDistances(
-		g_front_dist_mm,
-		g_back_dist_mm,
-		g_left_dist_mm,
-		g_right_dist_mm);
-	Arbiter_Process();
-
-	can_send_div++;
-	if(can_send_div >= ARBITER_CAN_DIV)
-	{
-		can_send_div = 0;
-		Arbiter_SendToSTM32A();
-	}
-}
-
-// 局部擦除固定宽度区域后重绘（ASCII）
-static void SensorUI_UpdateLine(u16 y, const char *text)
-{
-	LCD_Fill(UI_X, y, UI_X + UI_LINE_W, y + UI_FS - 1, BLACK);
-	LCD_ShowString(UI_X, y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)text);
-}
-
-static void SensorUI_UpdateForceStopBanner(void)
-{
-	LCD_Fill(UI_X, UI_Y_TITLE, tftlcd_data.width - 1, UI_Y_TITLE + UI_FS - 1, BLACK);
-	if(g_force_stop_enable)
-		LCD_ShowString(UI_X, UI_Y_TITLE, tftlcd_data.width, tftlcd_data.height, UI_FS, "*** FORCE STOP ON ***");
-	else
-		LCD_ShowString(UI_X, UI_Y_TITLE, tftlcd_data.width, tftlcd_data.height, UI_FS, "=== Sensor Data ===");
-}
-
-// 首次绘制：静态标签只画一次
-static void SensorUI_DrawStatic(void)
-{
-	u16 cx;
-	u16 top_y;
-	u16 bot_y;
-	u16 left_x;
-	u16 right_x;
-	u16 mid_y;
-
-	LCD_Clear(BLACK);
-	FRONT_COLOR = WHITE;
-	BACK_COLOR = BLACK;
-	cx = tftlcd_data.width / 2;
-	top_y = UI_Y_IF1;
-	bot_y = UI_Y_IF4;
-	mid_y = (u16)((top_y + bot_y) / 2);
-	left_x = 10;
-	right_x = (u16)(cx + 20);
-
-	SensorUI_UpdateForceStopBanner();
-	LCD_ShowString(UI_X, UI_Y_COUNT, tftlcd_data.width, tftlcd_data.height, UI_FS, "Count:");
-	LCD_ShowString(UI_X, UI_Y_DIST_HDR, tftlcd_data.width, tftlcd_data.height, UI_FS, "Distance Sensors:");
-	/* IF1 上、IF2 下、IF3 左、IF4 右 */
-	LCD_ShowString((u16)(cx - 56), top_y, tftlcd_data.width, tftlcd_data.height, UI_FS, "IF1:");
-	LCD_ShowString((u16)(cx - 56), bot_y, tftlcd_data.width, tftlcd_data.height, UI_FS, "IF2:");
-	LCD_ShowString(left_x, mid_y, tftlcd_data.width, tftlcd_data.height, UI_FS, "IF3:");
-	LCD_ShowString(right_x, mid_y, tftlcd_data.width, tftlcd_data.height, UI_FS, "IF4:");
-	LCD_ShowString(UI_X, UI_Y_CHASSIS, tftlcd_data.width, tftlcd_data.height, UI_FS, "--- Chassis CAN ---");
-
-	sensor_ui_inited = 1;
-}
-
-static void SensorUI_UpdateBeepStatus(void)
-{
-	if(g_force_stop_enable)
-		SensorUI_UpdateLine(UI_Y_BEEP, "STOP:ON KEY0=resume");
-	else
-	{
-		if(g_beep_dist_enable)
-			SensorUI_UpdateLine(UI_Y_BEEP, "Beep:ON  KEY1=toggle");
-		else
-			SensorUI_UpdateLine(UI_Y_BEEP, "Beep:OFF KEY1=toggle");
-	}
-}
-
-// 局部更新计数
-static void SensorUI_UpdateCount(u32 cnt)
-{
-	char buf[16];
-
-	sprintf(buf, "%lu", (unsigned long)cnt);
-	LCD_Fill(UI_X + 8 * (UI_FS / 2), UI_Y_COUNT, tftlcd_data.width - 1, UI_Y_COUNT + UI_FS - 1, BLACK);
-	LCD_ShowString(UI_X + 8 * (UI_FS / 2), UI_Y_COUNT, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)buf);
-}
-
-// 局部更新四路距离：原始值 + 括号内滤波值，如 "444 mm (443)"
-static void SensorUI_FormatDist(DistanceSensor_Data *ds, u8 idx, char *buf)
-{
-	if(!ds->valid)
-	{
-		sprintf(buf, "---");
-		return;
-	}
-	if(ds->error[idx] == DS_ERR_NONE)
-		sprintf(buf, "%u mm", (unsigned int)ds->dist[idx]);
-	else if(ds->error[idx] == DS_ERR_CHKFAIL)
-		sprintf(buf, "ERR");
-	else
-		sprintf(buf, "0");
-}
-
-static void SensorUI_FormatDistWithFilt(DistanceSensor_Data *ds, u8 idx, char *buf)
-{
-	char raw[16];
-	u16 filt;
-
-	SensorUI_FormatDist(ds, idx, raw);
-	filt = DistanceSensor_GetFilteredMm(idx);
-	if(filt == DS_DIST_UNKNOWN)
-		sprintf(buf, "%s (---)", raw);
-	else
-		sprintf(buf, "%s (%u)", raw, (unsigned int)filt);
-}
-
-static void SensorUI_UpdateDistances(DistanceSensor_Data *ds)
-{
-	u16 cx;
-	u16 top_y;
-	u16 bot_y;
-	u16 right_x;
-	u16 mid_y;
-	char buf1[28], buf2[28], buf3[28], buf4[28];
-
-	cx = tftlcd_data.width / 2;
-	top_y = UI_Y_IF1;
-	bot_y = UI_Y_IF4;
-	mid_y = (u16)((top_y + bot_y) / 2);
-	right_x = (u16)(cx + 20);
-
-	SensorUI_FormatDistWithFilt(ds, 0, buf1);
-	SensorUI_FormatDistWithFilt(ds, 1, buf2);
-	SensorUI_FormatDistWithFilt(ds, 2, buf3);
-	SensorUI_FormatDistWithFilt(ds, 3, buf4);
-
-	/* 清除并重绘4个方位值（留足括号滤波宽度） */
-	LCD_Fill((u16)(cx - 18), top_y, (u16)(tftlcd_data.width - 1), (u16)(top_y + UI_FS - 1), BLACK);
-	LCD_ShowString((u16)(cx - 18), top_y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)buf1);
-
-	LCD_Fill((u16)(cx - 18), bot_y, (u16)(tftlcd_data.width - 1), (u16)(bot_y + UI_FS - 1), BLACK);
-	LCD_ShowString((u16)(cx - 18), bot_y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)buf2);
-
-	LCD_Fill(48, mid_y, (u16)(cx - 10), (u16)(mid_y + UI_FS - 1), BLACK);
-	LCD_ShowString(48, mid_y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)buf3);
-
-	LCD_Fill((u16)(right_x + 38), mid_y, (u16)(tftlcd_data.width - 1), (u16)(mid_y + UI_FS - 1), BLACK);
-	LCD_ShowString((u16)(right_x + 38), mid_y, tftlcd_data.width, tftlcd_data.height, UI_FS, (u8*)buf4);
-}
-
-/* Recv=0x221→motion_fb；Send=output→SendToSTM32A→0x111；v/s/w 为帧内原始值 */
-static void Chassis_UpdateMotionLine(void)
-{
-	u8 fb_dir, cmd_dir;
-	s16 fb_speed, cmd_speed;
-	char buf[56];
-
-	Arbiter_GetMotionInfo(&fb_dir, &fb_speed);
-	Arbiter_GetCmdMotionInfo(&cmd_dir, &cmd_speed);
-
-	sprintf(buf, "Recv:%-5s %3d v%4d s%4d w%4d",
-		Arbiter_MotionDirNameAscii(fb_dir),
-		(int)fb_speed,
-		(int)arb_state.motion_fb.linear_speed,
-		(int)arb_state.motion_fb.steering_angle,
-		(int)arb_state.motion_fb.spin_speed);
-	SensorUI_UpdateLine(UI_Y_MOTION_FB, buf);
-
-	sprintf(buf, "Send:%-5s %3d v%4d s%4d w%4d",
-		Arbiter_MotionDirNameAscii(cmd_dir),
-		(int)cmd_speed,
-		(int)arb_state.output.v,
-		(int)arb_state.output.steering,
-		(int)arb_state.output.omega);
-	SensorUI_UpdateLine(UI_Y_MOTION_CMD, buf);
-}
-
-static void Chassis_UpdateWheelLines(void)
-{
-	char buf1[32], buf2[32];
-	ChassisWheelSpeed_t ws;
-
-	Arbiter_GetWheelSpeedPhysical(&ws);
-	sprintf(buf1, "LF:%5d   RF:%5d", (int)ws.lf, (int)ws.rf);
-	sprintf(buf2, "LR:%5d   RR:%5d", (int)ws.lr, (int)ws.rr);
-	SensorUI_UpdateLine(UI_Y_WHEELS1, buf1);
-	SensorUI_UpdateLine(UI_Y_WHEELS2, buf2);
-}
-
-// 局部更新底盘 CAN 区
-static void Chassis_UpdateOnLCD(void)
-{
-	char buf[40];
-	u16 bms_v;
-
-	Chassis_UpdateMotionLine();
-	Chassis_UpdateWheelLines();
-
-	sprintf(buf, "Batt:%2d.%1dV Mode:0x%02X",
-		(int)(arb_state.sys_status.battery_voltage / 10),
-		(int)(arb_state.sys_status.battery_voltage % 10),
-		(unsigned int)arb_state.sys_status.mode_control);
-	SensorUI_UpdateLine(UI_Y_BATT, buf);
-
-	if(arb_state.bms_data.soc > 0)
-	{
-		bms_v = arb_state.bms_data.voltage;
-		if(bms_v > 1000)
-			bms_v = bms_v / 10;
-		sprintf(buf, "BMS SOC:%2d%% V:%2d.%1dV",
-			(int)arb_state.bms_data.soc,
-			(int)(bms_v / 10),
-			(int)(bms_v % 10));
-		SensorUI_UpdateLine(UI_Y_BEEP + UI_FS, buf);
-	}
-}
+// 界面分流开关见文件顶部 UI_TEST_MODE / CHASSIS_CAN_MOTION_TEST
 
 // 旧版图标界面入口
 static void Legacy_UI_Loop(void)
@@ -847,180 +501,30 @@ int main()
 {	
 	Hardware_Check();
 
+#if (UI_TEST_MODE == 1) || (UI_TEST_MODE == 2)
+	printf("[MEM] pool IN=%u%% EX=%u%% CCM=%u%% (mem1=%uKB mem2=%uKB heap=32KB)\r\n",
+		my_mem_perused(SRAMIN), my_mem_perused(SRAMEX), my_mem_perused(SRAMCCM),
+		(unsigned)(MEM1_MAX_SIZE / 1024u), (unsigned)(MEM2_MAX_SIZE / 1024u));
+#endif
+
 #if (UI_TEST_MODE == 0)
 	printf("[BOOT] UI_MODE=0 (legacy_gui)\r\n");
 	Legacy_UI_Loop();
 #elif (UI_TEST_MODE == 1)
 	printf("[BOOT] UI_MODE=1 (arbiter_gui)\r\n");
-	USART3_Init();  // USART2: Jetson 指令接收
-	GPS_USART6_Init(9600); // GPS: 启动默认9600，随后自动配置并切换到115200
-	DistanceSensor_Init();
-	CAN1_Init_RangerMini();
-	Arbiter_Init();
-	Arbiter_EnableCANMode();
-	printf("[JETSON] USART2 RX ready, expecting 24-byte V3 frame\r\n");
-	printf("[CAN] Init done, MCR=0x%08X MSR=0x%08X\r\n",
-		(unsigned int)CAN1->MCR, (unsigned int)CAN1->MSR);
+	App_MotionHwInit();
 #if CHASSIS_CAN_MOTION_TEST
 	ChassisCanTest_RunOnce();
 #endif
-	printf("[MOTION] Dist ctrl ON, wait Jetson V3 on USART2(PA2/PA3), beep=%s (KEY1 toggle)\r\n",
-		g_beep_dist_enable ? "ON" : "OFF");
-	printf("[GPS] USART6 RX ready on PC7 (TX=PC6), auto cfg: GPS+BDS 5Hz RMC/GGA/GSA\r\n");
-	
-	// 确保 LCD 初始化完成
-	delay_ms(100);
-	
-	// 跳过 APP 图标界面，直接显示传感器数据
-	LCD_Clear(BLACK);
-	FRONT_COLOR = WHITE;
-	BACK_COLOR = BLACK;
-	
-	// 先显示初始内容
-	LCD_ShowString(5, 20, tftlcd_data.width, tftlcd_data.height, 16, "=== System Ready ===");
-	printf("[LCD] Ready to display sensor data\r\n");
-	
-	while(1)
-	{
-		SensorData_ShowScreen();
-	}
+	App_ShowBootSplash();
+	RTOS_AppStart();
 #elif (UI_TEST_MODE == 2)
+	printf("[BOOT] UI_MODE=2 (my_gui)\r\n");
 	My_UI_Loop();
-	USART3_Init();  // USART2: Jetson 指令接收
-	GPS_USART6_Init(9600); // GPS: 启动默认9600，随后自动配置并切换到115200
-	DistanceSensor_Init();
-	CAN1_Init_RangerMini();
-	Arbiter_Init();
-	Arbiter_EnableCANMode();
-	printf("[JETSON] USART2 RX ready, expecting 24-byte V3 frame\r\n");
-	printf("[CAN] Init done, MCR=0x%08X MSR=0x%08X\r\n",
-		(unsigned int)CAN1->MCR, (unsigned int)CAN1->MSR);
-	printf("[MOTION] Dist ctrl ON, wait Jetson V3 on USART2(PA2/PA3), beep=%s (KEY1 toggle)\r\n",
-		g_beep_dist_enable ? "ON" : "OFF");
-	printf("[GPS] USART6 RX ready on PC7 (TX=PC6), auto cfg: GPS+BDS 5Hz RMC/GGA/GSA\r\n");
-	LCD_Clear(BLACK);
-	FRONT_COLOR = WHITE;
-	BACK_COLOR = BLACK;
-	LCD_ShowString(5, 20, tftlcd_data.width, tftlcd_data.height, 16, "=== System Ready ===");
-	printf("[LCD] Ready to display sensor data\r\n");
-	while(1)
-	{
-		SensorData_ShowScreen();
-	}
+	App_MotionHwInit();
+	App_ShowBootSplash();
+	RTOS_AppStart();
 #else
 #error "UI_TEST_MODE must be 0, 1, or 2"
 #endif
-}
-
-// 传感器数据刷屏显示函数
-void SensorData_ShowScreen(void)
-{
-	DistanceSensor_Data *ds = DistanceSensor_GetData();
-	static u32 cnt = 0;
-	static u16 can_lcd_div = 0;
-	static u8 jetson_tx_div = 0;
-	static u8 jetson_tx_toggle = 0;
-	u8 jetson_frame[JETSON_FRAME_LEN];
-	u8 sensor_updated = 0;
-	u8 can_updated = 0;
-	u8 can_lcd_due = 0;
-
-	ControlKey_ToggleSwitch();
-	DistanceSensor_DrainLog();
-	GPS_Process();
-	GPS_PrintStatus();
-
-	/* 处理 Jetson 通过 USART2 发来的 8 字节控制帧 */
-	if(USART3_GetJetsonFrame(jetson_frame))
-	{
-		if(Arbiter_ParseJetsonCmd(jetson_frame, JETSON_FRAME_LEN) != 0)
-			printf("[JETSON CMD] parse failed\r\n");
-	}
-
-	while(CAN_MessagePending(CAN1, CAN_FIFO0))
-	{
-		Arbiter_ProcessCANFeedback();
-		can_updated = 1;
-	}
-
-	sensor_updated = DistanceSensor_NewData();
-	if(sensor_updated && ds->valid)
-	{
-		g_front_dist_mm = DistanceSensor_GetArbiterMm(DS_IDX_FRONT);
-		g_back_dist_mm = DistanceSensor_GetArbiterMm(DS_IDX_BACK);
-		g_left_dist_mm = DistanceSensor_GetArbiterMm(DS_IDX_LEFT);
-		g_right_dist_mm = DistanceSensor_GetArbiterMm(DS_IDX_RIGHT);
-		g_nearest_dist_mm = DistanceSensor_GetFilteredMinDistMm();
-		if(g_nearest_dist_mm == DS_DIST_UNKNOWN)
-			g_nearest_dist_mm = DistanceSensor_MinDistMm();
-		Beep_UpdateByDistance(g_nearest_dist_mm);
-	}
-
-	Motion_ControlByDistance();
-	Beep_UpdateByDistance(g_nearest_dist_mm);
-
-	/* V3 上行：20ms 周期，0x02/0x03 交替发送 */
-	jetson_tx_div++;
-	if(jetson_tx_div >= 2)
-	{
-		jetson_tx_div = 0;
-		if(jetson_tx_toggle == 0)
-		{
-			USART3_SendV3StatusFrame(&arb_state,
-				g_front_dist_mm, g_back_dist_mm, g_left_dist_mm, g_right_dist_mm);
-			jetson_tx_toggle = 1;
-		}
-		else
-		{
-			USART3_SendV3DetailFrame(&arb_state);
-			jetson_tx_toggle = 0;
-		}
-	}
-
-	if(can_updated)
-	{
-		can_lcd_div++;
-		if(can_lcd_div >= UI_CAN_LCD_DIV)
-		{
-			can_lcd_div = 0;
-			can_lcd_due = 1;
-		}
-	}
-
-	if(!sensor_ui_inited)
-	{
-		SensorUI_DrawStatic();
-		SensorUI_UpdateCount(0);
-		SensorUI_UpdateDistances(ds);
-		SensorUI_UpdateBeepStatus();
-		Chassis_UpdateOnLCD();
-	}
-
-	if(g_beep_ui_dirty)
-	{
-		SensorUI_UpdateBeepStatus();
-		g_beep_ui_dirty = 0;
-	}
-
-	if(g_force_stop_ui_dirty)
-	{
-		SensorUI_UpdateForceStopBanner();
-		g_force_stop_ui_dirty = 0;
-	}
-
-	if(sensor_updated)
-	{
-		cnt++;
-		DistanceSensor_Print();
-		SensorUI_UpdateCount(cnt);
-		SensorUI_UpdateDistances(ds);
-	}
-
-	if(can_lcd_due)
-	{
-		Arbiter_PrintChassisFeedback();
-		Chassis_UpdateOnLCD();
-	}
-
-	delay_ms(10);
 }

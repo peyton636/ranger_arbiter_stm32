@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F40_41xxx,USE_STDPERIPH_DRIVER,USE_USB_OTG_FS</Define>
               <Undefine></Undefine>
-              <IncludePath>.\User;.\Libraries\CMSIS;.\Libraries\STM32F4xx_StdPeriph_Driver\inc;.\APP\led;.\Public;.\APP\beep;.\APP\key;.\APP\exti;.\APP\time;.\APP\iwdg;.\APP\wwdg;.\APP\input;.\APP\rng;.\APP\wkup;.\APP\adc;.\APP\adc_temp;.\APP\dac;.\APP\dma;.\APP\rtc;.\APP\24Cxx;.\APP\iic;.\APP\ds18b20;.\APP\hwjs;.\APP\rs485;.\APP\can;.\APP\tftlcd;.\APP\flash;.\APP\spi;.\APP\stm32_flash;.\APP\sram;.\Malloc;.\APP\sd;.\Fatfs\src;.\Fatfs\fatfs_app;.\Font;.\Picture;.\APP\pwm;.\APP\rs232;.\LwIP;.\LwIP\arch;.\LwIP\lwip_app\lwip_comm;.\LwIP\lwip-1.4.1\src\include;.\LwIP\lwip-1.4.1\src\include\ipv4;.\LwIP\lwip-1.4.1\src\include\netif;.\Libraries\STM32F4x7_ETH_Driver\inc;.\APP\lan8720;.\USB\USB_APP;.\USB\STM32_USB_OTG_Driver\inc;.\USB\STM32_USB_HOST_Library\Core\inc;.\USB\STM32_USB_HOST_Library\Class\MSC\inc;.\APP\touch_key;.\APP\lsens;.\APP\mpu6050;.\APP\mpu6050\eMPL;.\APP\touch;.\T9INPUT;.\ICON;.\GUI;.\GUI_APP;.\APP\wm8978;.\APP\nrf24l01;.\APP\i2s;.\AudioDecod;.\AudioDecod\wav;.\USB\STM32_USB_Device_Library\Core\inc;.\USB\STM32_USB_Device_Library\Class\msc\inc;.\LwIP\lwip_app\web_server_demo;.\APP\dcmi;.\APP\ov2640;.\MJPEG;.\MJPEG\JPEG;.\APP\distance_sensor;.\APP\usart3;.\APP\arbiter;.\APP\chassis_test;.\APP\gps</IncludePath>
+              <IncludePath>.\User;.\Libraries\CMSIS;.\Libraries\STM32F4xx_StdPeriph_Driver\inc;.\APP\led;.\Public;.\APP\beep;.\APP\key;.\APP\exti;.\APP\time;.\APP\iwdg;.\APP\wwdg;.\APP\input;.\APP\rng;.\APP\wkup;.\APP\adc;.\APP\adc_temp;.\APP\dac;.\APP\dma;.\APP\rtc;.\APP\24Cxx;.\APP\iic;.\APP\ds18b20;.\APP\hwjs;.\APP\rs485;.\APP\can;.\APP\tftlcd;.\APP\flash;.\APP\spi;.\APP\stm32_flash;.\APP\sram;.\Malloc;.\APP\sd;.\Fatfs\src;.\Fatfs\fatfs_app;.\Font;.\Picture;.\APP\pwm;.\APP\rs232;.\LwIP;.\LwIP\arch;.\LwIP\lwip_app\lwip_comm;.\LwIP\lwip-1.4.1\src\include;.\LwIP\lwip-1.4.1\src\include\ipv4;.\LwIP\lwip-1.4.1\src\include\netif;.\Libraries\STM32F4x7_ETH_Driver\inc;.\APP\lan8720;.\USB\USB_APP;.\USB\STM32_USB_OTG_Driver\inc;.\USB\STM32_USB_HOST_Library\Core\inc;.\USB\STM32_USB_HOST_Library\Class\MSC\inc;.\APP\touch_key;.\APP\lsens;.\APP\mpu6050;.\APP\mpu6050\eMPL;.\APP\touch;.\T9INPUT;.\ICON;.\GUI;.\GUI_APP;.\APP\wm8978;.\APP\nrf24l01;.\APP\i2s;.\AudioDecod;.\AudioDecod\wav;.\USB\STM32_USB_Device_Library\Core\inc;.\USB\STM32_USB_Device_Library\Class\msc\inc;.\LwIP\lwip_app\web_server_demo;.\APP\dcmi;.\APP\ov2640;.\MJPEG;.\MJPEG\JPEG;.\APP\distance_sensor;.\APP\usart3;.\APP\arbiter;.\APP\chassis_test;.\APP\gps;.\Middlewares\FreeRTOS\include;.\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F;.\APP\freertos;.\APP\freertos\tasks</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -544,6 +544,76 @@
               <FileName>usart.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Public\usart.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>FreeRTOS</GroupName>
+          <Files>
+            <File>
+              <FileName>list.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Middlewares\FreeRTOS\list.c</FilePath>
+            </File>
+            <File>
+              <FileName>tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Middlewares\FreeRTOS\tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Middlewares\FreeRTOS\queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>heap_4.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Middlewares\FreeRTOS\portable\MemMang\heap_4.c</FilePath>
+            </File>
+            <File>
+              <FileName>port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F\port.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_boot.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\app_boot.c</FilePath>
+            </File>
+            <File>
+              <FileName>freertos_app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\freertos_app.c</FilePath>
+            </File>
+            <File>
+              <FileName>freertos_heap.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\freertos_heap.c</FilePath>
+            </File>
+            <File>
+              <FileName>motion_ui_shared.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\motion_ui_shared.c</FilePath>
+            </File>
+            <File>
+              <FileName>motion_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\motion_control.c</FilePath>
+            </File>
+            <File>
+              <FileName>sensor_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\sensor_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtos_debug.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\rtos_debug.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtos_tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\APP\freertos\rtos_tasks.c</FilePath>
             </File>
           </Files>
         </Group>

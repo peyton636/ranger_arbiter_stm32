@@ -143,7 +143,7 @@ void Wireless_APP_Test(void)
 	if(!clearbtn)rval=1;			//û���㹻�ڴ湻����
 	else
 	{																				
-		clearbtn->caption="���";//���� 
+		clearbtn->caption="Clear";
 		clearbtn->font=gui_phy.tbfsize;//�����µ������С	 	 
 		clearbtn->bcfdcolor=WHITE;	//����ʱ����ɫ
 		clearbtn->bcfucolor=WHITE;	//�ɿ�ʱ����ɫ

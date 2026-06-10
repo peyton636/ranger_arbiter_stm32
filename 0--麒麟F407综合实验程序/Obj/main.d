@@ -99,3 +99,5 @@
 .\obj\main.o: .\APP\chassis_test\chassis_can_test.h
 .\obj\main.o: .\APP\usart3\usart3.h
 .\obj\main.o: .\APP\gps\gps.h
+.\obj\main.o: .\APP\freertos\freertos_app.h
+.\obj\main.o: .\APP\freertos\app_boot.h

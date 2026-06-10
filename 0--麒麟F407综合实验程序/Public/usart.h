@@ -11,6 +11,9 @@ extern u16 USART1_RX_STA;         		//?????????
 
 void USART1_Init(u32 bound);
 
+void Usart_PrintMutexInit(void);
+void Usart_PrintLock(void);
+void Usart_PrintUnlock(void);
 
 #endif
 

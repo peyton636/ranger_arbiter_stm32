@@ -1,10 +1,41 @@
-#include "usart.h"		 
+#include "usart.h"
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "task.h"
 
+static SemaphoreHandle_t s_print_mutex = NULL;
 
-int fputc(int ch,FILE *p)  //??????????????printf????????????
+void Usart_PrintMutexInit(void)
 {
-	USART_SendData(USART1,(u8)ch);	
-	while(USART_GetFlagStatus(USART1,USART_FLAG_TXE)==RESET);
+	if(s_print_mutex == NULL)
+		s_print_mutex = xSemaphoreCreateMutex();
+}
+
+void Usart_PrintLock(void)
+{
+	if(s_print_mutex != NULL &&
+	   xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+	{
+		xSemaphoreTake(s_print_mutex, portMAX_DELAY);
+	}
+}
+
+void Usart_PrintUnlock(void)
+{
+	if(s_print_mutex != NULL &&
+	   xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+	{
+		xSemaphoreGive(s_print_mutex);
+	}
+}
+
+int fputc(int ch, FILE *p)
+{
+	(void)p;
+	Usart_PrintLock();
+	USART_SendData(USART1, (u8)ch);
+	while(USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
+	Usart_PrintUnlock();
 	return ch;
 }
 
