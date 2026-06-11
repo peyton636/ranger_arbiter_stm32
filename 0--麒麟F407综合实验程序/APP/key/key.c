@@ -53,7 +53,7 @@ u8 KEY_Scan(u8 mode)
 		else if(KEY2==0)
 			return KEY2_PRESS; 
 	}
-	else if(KEY_UP==0&&KEY0==1&&KEY1==1&&KEY2==1)    //无按键按下
+	else if(KEY0==1&&KEY1==1&&KEY2==1)    /* PE 三键均释放即可再次触发（勿依赖 KEY_UP） */
 		key=1;
 	return 0;
 }

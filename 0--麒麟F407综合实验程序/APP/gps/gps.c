@@ -992,6 +992,86 @@ const GPS_Data_t *GPS_GetData(void)
 	return &g_gps_data;
 }
 
+static u8 GPS_Dec2(const char *s)
+{
+	if(!s || s[0] < '0' || s[0] > '9' || s[1] < '0' || s[1] > '9')
+		return 0;
+	return (u8)((s[0] - '0') * 10 + (s[1] - '0'));
+}
+
+static u16 GPS_Dec4(const char *s)
+{
+	u16 v = 0;
+	u8 i;
+
+	if(!s)
+		return 0;
+	for(i = 0; i < 4; i++)
+	{
+		if(s[i] < '0' || s[i] > '9')
+			return 0;
+		v = (u16)(v * 10 + (u16)(s[i] - '0'));
+	}
+	return v;
+}
+
+static u8 GPS_IsLeapYear(u16 year)
+{
+	return (u8)(((year % 4u) == 0u && (year % 100u) != 0u) || ((year % 400u) == 0u));
+}
+
+u32 GPS_GetUtcUnixSec(void)
+{
+	u16 year;
+	u8 month;
+	u8 day;
+	u8 hour;
+	u8 minute;
+	u8 second;
+	u32 days;
+	u16 y;
+	const u16 month_days[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+	u16 dlen;
+
+	if(!g_gps_data.usefull && !g_gps_data.pos_valid)
+		return 0;
+	if(g_gps_data.utc_time[0] == '\0' || g_gps_data.date[0] == '\0')
+		return 0;
+
+	hour = GPS_Dec2(g_gps_data.utc_time);
+	minute = GPS_Dec2(g_gps_data.utc_time + 2);
+	second = GPS_Dec2(g_gps_data.utc_time + 4);
+
+	dlen = (u16)strlen(g_gps_data.date);
+	if(dlen >= 8u)
+	{
+		day = GPS_Dec2(g_gps_data.date);
+		month = GPS_Dec2(g_gps_data.date + 2);
+		year = GPS_Dec4(g_gps_data.date + 4);
+	}
+	else if(dlen >= 6u)
+	{
+		day = GPS_Dec2(g_gps_data.date);
+		month = GPS_Dec2(g_gps_data.date + 2);
+		year = (u16)(2000u + GPS_Dec2(g_gps_data.date + 4));
+	}
+	else
+		return 0;
+
+	if(year < 1970u || month < 1u || month > 12u || day < 1u || day > 31u)
+		return 0;
+
+	days = 0;
+	for(y = 1970u; y < year; y++)
+		days += GPS_IsLeapYear(y) ? 366u : 365u;
+	days += (u32)month_days[month - 1u];
+	if(month > 2u && GPS_IsLeapYear(year))
+		days++;
+	days += (u32)(day - 1u);
+
+	return days * 86400u + (u32)hour * 3600u + (u32)minute * 60u + (u32)second;
+}
+
 u8 GPS_SendNmeaCommand(const char *body)
 {
 	u8 cs;

@@ -58,4 +58,5 @@
 .\obj\rtos_tasks.o: .\APP\arbiter\arbiter.h
 .\obj\rtos_tasks.o: .\APP\can\can.h
 .\obj\rtos_tasks.o: .\APP\usart3\usart3.h
+.\obj\rtos_tasks.o: .\APP\jetson_can\jetson_can.h
 .\obj\rtos_tasks.o: .\APP\gps\gps.h

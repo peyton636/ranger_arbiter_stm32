@@ -49,6 +49,7 @@ void GPS_Process(void);
 void GPS_PrintStatus(void);
 u8 GPS_HasFix(void);
 const GPS_Data_t *GPS_GetData(void);
+u32 GPS_GetUtcUnixSec(void);
 
 /* ����NMEA�����壨����$��*CS�������磺PCAS03,1,1,1,1,1,1,1,1,0,0,,,1,1,,,,1 */
 u8 GPS_SendNmeaCommand(const char *body);

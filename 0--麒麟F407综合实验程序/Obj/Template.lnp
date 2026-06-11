@@ -63,6 +63,8 @@
 ".\obj\adc_temp.o"
 ".\obj\ds18b20.o"
 ".\obj\can.o"
+".\obj\can2.o"
+".\obj\jetson_can.o"
 ".\obj\rs485.o"
 ".\obj\touch_key.o"
 ".\obj\lsens.o"

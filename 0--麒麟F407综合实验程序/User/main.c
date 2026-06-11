@@ -298,9 +298,12 @@ REINIT:// 重新初始化
 		res=fatfs_getfree("1:",&dtsize,&dfsize);
 		delay_ms(200);
 	}while(res&&temp<20);
-	if(res==FR_NO_FILESYSTEM)
+	if(res != 0)
 	{
+		printf("[FAT] 1: getfree err=%u, try mkfs...\r\n", (unsigned)res);
 		LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "Flash Disk Formatting...");
+		/* mkfs 需要 FatFs 工作区；不可 f_mount(NULL) 否则 err=12 FR_NOT_ENABLED */
+		f_mount(fs[1],"1:",1);
 		res=f_mkfs("1:",1,4096);
 		if(res==0)
 		{
@@ -327,7 +330,12 @@ REINIT:// 重新初始化
 	{
 		temp=0;
 		LCD_ShowxNum(5+11*(fsize/2),ypos+fsize*j,temp,5,fsize,0);
+#if (UI_TEST_MODE == 1)
+		printf("[FAT] 1: unavailable err=%u (arbiter skip, KEY_UP@boot=erase flash)\r\n", (unsigned)res);
+		LCD_ShowString(5+okoffset,ypos+fsize*j++,tftlcd_data.width,tftlcd_data.height,fsize,"SKIP");
+#else
 		system_error_show(5,ypos+fsize*(j+1),"Flash Fat Error!",fsize);
+#endif
 	}
 	// TPAD 检测
  	LCD_ShowString(5,ypos+fsize*j,tftlcd_data.width,tftlcd_data.height,fsize, "TPAD Check...");			   

@@ -8,6 +8,7 @@
 #include "arbiter.h"
 #include "can.h"
 #include "usart3.h"
+#include "jetson_can.h"
 #include "gps.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -142,17 +143,22 @@ void vJetsonTask(void *pvParameters)
 	{
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(JETSON_TASK_CYCLE_MS));
 
-		if(USART3_GetJetsonFrame(jetson_frame))
-		{
-			App_ArbiterLock();
-			if(Arbiter_ParseJetsonCmd(jetson_frame, JETSON_FRAME_LEN) != 0)
-				RTOS_PRINT("[JETSON CMD] parse failed\r\n");
-			App_ArbiterUnlock();
-		}
-
 		DistSnapshot_Read(&f, &b, &l, &r, &n);
 
 		App_ArbiterLock();
+#if JETSON_LINK_CAN
+		JetsonCAN_ProcessRx(&arb_state, n);
+		if(JetsonCAN_GetFrame(jetson_frame))
+#else
+		if(USART3_GetJetsonFrame(jetson_frame))
+#endif
+		{
+			if(Arbiter_ParseJetsonCmd(jetson_frame, JETSON_FRAME_LEN) != 0)
+				RTOS_PRINT("[JETSON CMD] parse failed\r\n");
+		}
+#if JETSON_LINK_CAN
+		JetsonCAN_ServiceFault(&arb_state);
+#endif
 		if(s_jetson_tx_toggle == 0)
 		{
 			USART3_SendV3StatusFrame(&arb_state, f, b, l, r);
@@ -177,6 +183,9 @@ void vGpsTask(void *pvParameters)
 	{
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(GPS_TASK_CYCLE_MS));
 		GPS_Process();
+#if JETSON_LINK_CAN
+		JetsonCAN_SendGps(GPS_GetData());
+#endif
 		GPS_PrintStatus();
 	}
 }

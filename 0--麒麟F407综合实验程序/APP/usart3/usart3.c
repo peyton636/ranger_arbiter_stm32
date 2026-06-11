@@ -1,6 +1,11 @@
 #include "usart3.h"
 #include "stm32f4xx.h"
 #include "stdio.h"
+#include "beep.h"
+#include "can2.h"
+#if JETSON_LINK_CAN
+#include "jetson_can.h"
+#endif
 
 #define JETSON_RX_DEBUG 0
 
@@ -98,6 +103,7 @@ static u8 USART3_CalcLimitFactor(const ArbiterState_t *state)
 * 输    入         : 无
 * 输    出         : 无
 *******************************************************************************/
+#if !JETSON_LINK_CAN
 void USART3_Init(void)
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
@@ -142,32 +148,30 @@ void USART3_Init(void)
 	// 启用USART2
 	USART_Cmd(USART2, ENABLE);
 }
+#endif
 
-/*******************************************************************************
-* 函 数 名         : USART3_SendByte
-* 功能描述		   : 发送单个字节
-* 输    入         : data: 要发送的字节
-* 输    出         : 无
-*******************************************************************************/
+static void USART3_DeliverV3Frame(u32 can_id, const u8 *frame)
+{
+#if JETSON_LINK_CAN
+	JetsonCAN_SendV3Frame(can_id, frame);
+#else
+	USART3_SendData((u8 *)frame, JETSON_V3_FRAME_LEN);
+#endif
+}
+
+#if !JETSON_LINK_CAN
 void USART3_SendByte(u8 data)
 {
 	USART_SendData(USART2, data);
 	while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
 }
 
-/*******************************************************************************
-* 函 数 名         : USART3_SendData
-* 功能描述		   : 发送多个字节
-* 输    入         : data: 数据指针, len: 数据长度
-* 输    出         : 无
-*******************************************************************************/
 void USART3_SendData(u8* data, u16 len)
 {
 	while(len--)
-	{
 		USART3_SendByte(*data++);
-	}
 }
+#endif
 
 /*******************************************************************************
 * 函 数 名         : USART3_SendV3StatusFrame
@@ -191,6 +195,8 @@ void USART3_SendV3StatusFrame(const ArbiterState_t *state, u16 sonar_front, u16 
 		link_state |= 0x01;
 	if(state->sys_status.system_status == 0x02)
 		link_state |= 0x02;
+	if(BEEP_GetDuty() > 0)
+		link_state |= 0x04;
 	frame[4] = link_state;
 	frame[5] = USART3_CalcLimitFactor(state);
 
@@ -206,7 +212,7 @@ void USART3_SendV3StatusFrame(const ArbiterState_t *state, u16 sonar_front, u16 
 	frame[22] = state->bms_data.soc;
 
 	frame[23] = USART3_BuildXor(frame);
-	USART3_SendData(frame, JETSON_V3_FRAME_LEN);
+	USART3_DeliverV3Frame(JETSON_CAN_ID_STATUS, frame);
 }
 
 /*******************************************************************************
@@ -254,9 +260,10 @@ void USART3_SendV3DetailFrame(const ArbiterState_t *state)
 	frame[22] = 0;
 
 	frame[23] = USART3_BuildXor(frame);
-	USART3_SendData(frame, JETSON_V3_FRAME_LEN);
+	USART3_DeliverV3Frame(JETSON_CAN_ID_DETAIL, frame);
 }
 
+#if !JETSON_LINK_CAN
 /*******************************************************************************
 * 函 数 名         : USART3_ProcessRxByte
 * 功能描述		   : 处理接收到的单个字节（在中断中调用）
@@ -331,3 +338,4 @@ void USART2_IRQHandler(void)
 		USART_ClearITPendingBit(USART2, USART_IT_RXNE);
 	}
 }
+#endif

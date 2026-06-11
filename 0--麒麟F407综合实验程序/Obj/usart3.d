@@ -37,4 +37,8 @@
 .\obj\usart3.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h
 .\obj\usart3.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
 .\obj\usart3.o: .\APP\arbiter\arbiter.h
+.\obj\usart3.o: .\APP\jetson_can\jetson_can.h
+.\obj\usart3.o: .\APP\gps\gps.h
 .\obj\usart3.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\obj\usart3.o: .\APP\beep\beep.h
+.\obj\usart3.o: .\APP\can\can2.h
