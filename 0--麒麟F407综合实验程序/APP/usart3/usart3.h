@@ -15,8 +15,10 @@
 void USART3_Init(void);
 void USART3_SendByte(u8 data);
 void USART3_SendData(u8* data, u16 len);
+void USART3_SendServiceFrame(u32 can_id, const u8 *payload, u8 len);
 void USART3_ProcessRxByte(u8 byte);
 u8 USART3_GetJetsonFrame(u8* frame);
+u8 USART3_GetServiceRequest(u32 *can_id, u8 *payload);
 #endif
 
 // V3 上行帧发送

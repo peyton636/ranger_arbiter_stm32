@@ -2,47 +2,47 @@
 #include "SysTick.h"
 
 /*******************************************************************************
-* º¯ Êý Ãû         : KEY_Init
-* º¯Êý¹¦ÄÜ		   : °´¼ü³õÊ¼»¯
-* Êä    Èë         : ÎÞ
-* Êä    ³ö         : ÎÞ
+* ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½         : KEY_Init
+* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½		   : ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½
+* ï¿½ï¿½    ï¿½ï¿½         : ï¿½ï¿½
+* ï¿½ï¿½    ï¿½ï¿½         : ï¿½ï¿½
 *******************************************************************************/
 void KEY_Init(void)
 {
-	GPIO_InitTypeDef GPIO_InitStructure; //¶¨Òå½á¹¹Ìå±äÁ¿	
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOE|RCC_AHB1Periph_GPIOA,ENABLE); //Ê¹ÄÜ¶Ë¿ÚÊ±ÖÓ
+	GPIO_InitTypeDef GPIO_InitStructure; //ï¿½ï¿½ï¿½ï¿½á¹¹ï¿½ï¿½ï¿½ï¿½ï¿½	
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOE|RCC_AHB1Periph_GPIOA,ENABLE); //Ê¹ï¿½Ü¶Ë¿ï¿½Ê±ï¿½ï¿½
 	
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IN; //ÊäÈëÄ£Ê½
-	GPIO_InitStructure.GPIO_Pin=KEY0_PIN|KEY1_PIN|KEY2_PIN;//¹Ü½ÅÉèÖÃ
-	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_UP;//ÉÏÀ­
-	GPIO_Init(KEY_PORT,&GPIO_InitStructure); //³õÊ¼»¯½á¹¹Ìå
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IN; //ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+	GPIO_InitStructure.GPIO_Pin=KEY0_PIN|KEY1_PIN|KEY2_PIN;//ï¿½Ü½ï¿½ï¿½ï¿½ï¿½ï¿½
+	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_UP;//ï¿½ï¿½ï¿½ï¿½
+	GPIO_Init(KEY_PORT,&GPIO_InitStructure); //ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½á¹¹ï¿½ï¿½
 	
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IN; //ÊäÈëÄ£Ê½
-	GPIO_InitStructure.GPIO_Pin=KEY_UP_PIN;//¹Ü½ÅÉèÖÃ
-	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_DOWN;//ÏÂÀ­
-	GPIO_Init(KEY_UP_PORT,&GPIO_InitStructure); //³õÊ¼»¯½á¹¹Ìå
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IN; //ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+	GPIO_InitStructure.GPIO_Pin=KEY_UP_PIN;//ï¿½Ü½ï¿½ï¿½ï¿½ï¿½ï¿½
+	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_DOWN;//ï¿½ï¿½ï¿½ï¿½
+	GPIO_Init(KEY_UP_PORT,&GPIO_InitStructure); //ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½á¹¹ï¿½ï¿½
 }
 
 /*******************************************************************************
-* º¯ Êý Ãû         : KEY_Scan
-* º¯Êý¹¦ÄÜ		   : °´¼üÉ¨Ãè¼ì²â
-* Êä    Èë         : mode=0:µ¥´Î°´ÏÂ°´¼ü
-					 mode=1£ºÁ¬Ðø°´ÏÂ°´¼ü
-* Êä    ³ö         : 0£ºÎ´ÓÐ°´¼ü°´ÏÂ
-					 KEY_UP_PRESS£ºKEY_UP¼ü°´ÏÂ
-					 KEY0_PRESS£ºKEY0¼ü°´ÏÂ
-					 KEY1_PRESS£ºKEY1¼ü°´ÏÂ
-					 KEY2_PRESS£ºKEY2¼ü°´ÏÂ
+* ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½         : KEY_Scan
+* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½		   : ï¿½ï¿½ï¿½ï¿½É¨ï¿½ï¿½ï¿½ï¿½
+* ï¿½ï¿½    ï¿½ï¿½         : mode=0:ï¿½ï¿½ï¿½Î°ï¿½ï¿½Â°ï¿½ï¿½ï¿½
+					 mode=1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â°ï¿½ï¿½ï¿½
+* ï¿½ï¿½    ï¿½ï¿½         : 0ï¿½ï¿½Î´ï¿½Ð°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+					 KEY_UP_PRESSï¿½ï¿½KEY_UPï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+					 KEY0_PRESSï¿½ï¿½KEY0ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+					 KEY1_PRESSï¿½ï¿½KEY1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+					 KEY2_PRESSï¿½ï¿½KEY2ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 *******************************************************************************/
 u8 KEY_Scan(u8 mode)
 {
 	static u8 key=1;
 	
-	if(mode==1) //Á¬Ðø°´¼ü°´ÏÂ
+	if(mode==1) //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		key=1;
-	if(key==1&&(KEY_UP==1||KEY0==0||KEY1==0||KEY2==0)) //ÈÎÒâÒ»¸ö°´¼ü°´ÏÂ
+	if(key==1&&(KEY_UP==1||KEY0==0||KEY1==0||KEY2==0)) //ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	{
-		delay_ms(10);  //Ïû¶¶
+		delay_ms(10);  //ï¿½ï¿½ï¿½ï¿½
 		key=0;
 		if(KEY_UP==1)
 			return KEY_UP_PRESS; 
@@ -53,7 +53,7 @@ u8 KEY_Scan(u8 mode)
 		else if(KEY2==0)
 			return KEY2_PRESS; 
 	}
-	else if(KEY0==1&&KEY1==1&&KEY2==1)    /* PE Èý¼ü¾ùÊÍ·Å¼´¿ÉÔÙ´Î´¥·¢£¨ÎðÒÀÀµ KEY_UP£© */
+	else if(KEY0==1&&KEY1==1&&KEY2==1)    /* PE ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·Å¼ï¿½ï¿½ï¿½ï¿½Ù´Î´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ KEY_UPï¿½ï¿½ */
 		key=1;
 	return 0;
 }

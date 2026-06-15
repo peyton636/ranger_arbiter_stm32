@@ -1,11 +1,14 @@
 #include "jetson_can.h"
 #include "can2.h"
 #include "distance_sensor.h"
+#include "beep.h"
+#include "usart3.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stdio.h"
 
 #define JETSON_CAN_RX_DEBUG       0
+#define JETSON_TIME_SVC_DEBUG     0
 #define JETSON_CAN_ASM_TIMEOUT    50u
 #define JETSON_CAN_FAULT_KEEP_MS  1000u
 
@@ -16,10 +19,21 @@ static u8 s_rx_complete[JETSON_FRAME_LEN];
 static u32 s_rx_last_ms = 0;
 static u32 s_last_fault_sig = 0;
 static u32 s_last_fault_send_ms = 0;
+static u8 s_time_session_active = 0;
+static u8 s_time_session_id = 0;
 
 static u32 JetsonCAN_NowMs(void)
 {
 	return (u32)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+static void JetsonLink_Deliver8(u32 can_id, const u8 *payload, u8 len)
+{
+#if JETSON_LINK_CAN
+	CAN2_Send_Msg_WithID(can_id, (u8 *)payload, len);
+#else
+	USART3_SendServiceFrame(can_id, payload, len);
+#endif
 }
 
 static void JetsonCAN_ResetRxAsm(void)
@@ -87,11 +101,15 @@ static void JetsonCAN_OnFrag(const u8 *data, u8 dlc)
 
 void JetsonCAN_Init(void)
 {
+#if JETSON_LINK_CAN
 	CAN2_Init_Jetson();
+#endif
 	JetsonCAN_ResetRxAsm();
 	s_rx_frame_ready = 0;
 	s_last_fault_sig = 0;
 	s_last_fault_send_ms = 0;
+	s_time_session_active = 0;
+	s_time_session_id = 0;
 }
 
 static void JetsonCAN_PutU32BE(u8 *buf, u8 idx, u32 value)
@@ -170,6 +188,8 @@ static u8 JetsonCAN_BuildLinkState(const ArbiterState_t *state)
 		link_state |= 0x01;
 	if(state->sys_status.system_status == 0x02)
 		link_state |= 0x02;
+	if(BEEP_GetDuty() > 0)
+		link_state |= 0x04;
 	return link_state;
 }
 
@@ -216,6 +236,39 @@ static u32 JetsonCAN_FaultSignature(const ArbiterState_t *state)
 	return sig;
 }
 
+static u8 JetsonCAN_BuildTimeFlags(void)
+{
+	u8 flags = 0;
+
+	if(GPS_HasFix() && GPS_GetUtcUnixSec() != 0)
+		flags |= JETSON_TIME_FLAG_GPS_UTC;
+	return flags;
+}
+
+static void JetsonCAN_SendTimeSessionRsp(u8 cmd_echo, u8 echo_byte, u32 tick_rx_ms)
+{
+	u8 frame[8];
+	u32 tick_tx;
+	u32 proc_ms;
+	u8 proc_100us;
+
+	tick_tx = JetsonCAN_NowMs();
+
+	if(tick_tx >= tick_rx_ms)
+		proc_ms = tick_tx - tick_rx_ms;
+	else
+		proc_ms = 0;
+
+	proc_100us = (u8)((proc_ms * 10u > 255u) ? 255u : proc_ms * 10u);
+
+	frame[0] = cmd_echo;
+	frame[1] = echo_byte;
+	JetsonCAN_PutU32BE(frame, 2, tick_rx_ms);
+	frame[6] = JetsonCAN_BuildTimeFlags();
+	frame[7] = proc_100us;
+	JetsonLink_Deliver8(JETSON_CAN_ID_TIME_RSP, frame, 8);
+}
+
 static void JetsonCAN_SendTimeSync(void)
 {
 	u8 frame[8];
@@ -224,7 +277,52 @@ static void JetsonCAN_SendTimeSync(void)
 
 	JetsonCAN_PutU32BE(frame, 0, tick_ms);
 	JetsonCAN_PutU32BE(frame, 4, utc_sec);
-	CAN2_Send_Msg_WithID(JETSON_CAN_ID_TIME_RSP, frame, 8);
+	JetsonLink_Deliver8(JETSON_CAN_ID_TIME_RSP, frame, 8);
+}
+
+static void JetsonCAN_HandleTimeRequest(const u8 *buf, u8 dlc)
+{
+	u32 tick_rx;
+
+	if(!buf || dlc == 0)
+		return;
+
+#if JETSON_TIME_SVC_DEBUG
+	printf("[JETSON TIME] cmd=0x%02X dlc=%u\r\n", (unsigned)buf[0], (unsigned)dlc);
+#endif
+
+	switch(buf[0])
+	{
+		case JETSON_CAN_CMD_TIME_SYNC:
+			JetsonCAN_SendTimeSync();
+			break;
+
+		case JETSON_CAN_CMD_TIME_START:
+			if(dlc < 2)
+				break;
+			s_time_session_id = buf[1];
+			s_time_session_active = 1;
+			tick_rx = JetsonCAN_NowMs();
+			JetsonCAN_SendTimeSessionRsp(JETSON_CAN_CMD_TIME_START, buf[1], tick_rx);
+			break;
+
+		case JETSON_CAN_CMD_TIME_PING:
+			if(dlc < 2)
+				break;
+			tick_rx = JetsonCAN_NowMs();
+			JetsonCAN_SendTimeSessionRsp(JETSON_CAN_CMD_TIME_PING, buf[1], tick_rx);
+			break;
+
+		case JETSON_CAN_CMD_TIME_STOP:
+			if(dlc < 2)
+				break;
+			if(buf[1] == s_time_session_id)
+				s_time_session_active = 0;
+			break;
+
+		default:
+			break;
+	}
 }
 
 static void JetsonCAN_SendStatusQueryRsp(const ArbiterState_t *state, u16 nearest_mm)
@@ -249,7 +347,7 @@ static void JetsonCAN_SendStatusQueryRsp(const ArbiterState_t *state, u16 neares
 		flags |= 0x04;
 	frame[7] = flags;
 
-	CAN2_Send_Msg_WithID(JETSON_CAN_ID_STATUS_RSP, frame, 8);
+	JetsonLink_Deliver8(JETSON_CAN_ID_STATUS_RSP, frame, 8);
 }
 
 static void JetsonCAN_SendFaultReport(const ArbiterState_t *state)
@@ -270,7 +368,7 @@ static void JetsonCAN_SendFaultReport(const ArbiterState_t *state)
 	JetsonCAN_PutU16BE(frame, 4, (u16)(tick_ms & 0xFFFFu));
 	frame[6] = state->sys_status.system_status;
 	frame[7] = (u8)(state->sys_status.fault_info & 0xFFu);
-	CAN2_Send_Msg_WithID(JETSON_CAN_ID_FAULT, frame, 8);
+	JetsonLink_Deliver8(JETSON_CAN_ID_FAULT, frame, 8);
 }
 
 void JetsonCAN_ServiceFault(const ArbiterState_t *state)
@@ -296,7 +394,7 @@ void JetsonCAN_ServiceFault(const ArbiterState_t *state)
 	}
 }
 
-static void JetsonCAN_HandleServiceRx(u32 can_id, const u8 *buf, u8 dlc,
+void JetsonCAN_HandleServiceRequest(u32 can_id, const u8 *buf, u8 dlc,
 	const ArbiterState_t *state, u16 nearest_mm)
 {
 	if(!buf || dlc == 0)
@@ -304,8 +402,7 @@ static void JetsonCAN_HandleServiceRx(u32 can_id, const u8 *buf, u8 dlc,
 
 	if(can_id == JETSON_CAN_ID_TIME_REQ)
 	{
-		if(buf[0] == JETSON_CAN_CMD_TIME_SYNC)
-			JetsonCAN_SendTimeSync();
+		JetsonCAN_HandleTimeRequest(buf, dlc);
 		return;
 	}
 
@@ -335,7 +432,7 @@ void JetsonCAN_ProcessRx(const ArbiterState_t *state, u16 nearest_mm)
 		if(can_id == JETSON_CAN_ID_DOWN)
 			JetsonCAN_OnFrag(buf, dlc);
 		else if(can_id == JETSON_CAN_ID_TIME_REQ || can_id == JETSON_CAN_ID_STATUS_REQ)
-			JetsonCAN_HandleServiceRx(can_id, buf, dlc, state, nearest_mm);
+			JetsonCAN_HandleServiceRequest(can_id, buf, dlc, state, nearest_mm);
 	}
 }
 
@@ -421,19 +518,19 @@ void JetsonCAN_SendGps(const GPS_Data_t *gps)
 	frame_a[3] = gps->num_sv;
 	JetsonCAN_PutU16BE(frame_a, 4, hdop_x100);
 	JetsonCAN_PutU16BE(frame_a, 6, speed_cms);
-	CAN2_Send_Msg_WithID(JETSON_CAN_ID_GPS, frame_a, 8);
+	JetsonLink_Deliver8(JETSON_CAN_ID_GPS, frame_a, 8);
 	vTaskDelay(pdMS_TO_TICKS(JETSON_CAN_GPS_FRAG_GAP_MS));
 
 	frame_b[0] = JETSON_CAN_GPS_MAGIC;
 	frame_b[1] = 1;
 	JetsonCAN_PutS32BE(frame_b, 2, lat_e7);
 	JetsonCAN_PutS16BE(frame_b, 6, heading_x100);
-	CAN2_Send_Msg_WithID(JETSON_CAN_ID_GPS_B, frame_b, 8);
+	JetsonLink_Deliver8(JETSON_CAN_ID_GPS_B, frame_b, 8);
 	vTaskDelay(pdMS_TO_TICKS(JETSON_CAN_GPS_FRAG_GAP_MS));
 
 	frame_c[0] = JETSON_CAN_GPS_MAGIC;
 	frame_c[1] = 2;
 	JetsonCAN_PutS32BE(frame_c, 2, lon_e7);
 	JetsonCAN_PutS16BE(frame_c, 6, alt_dm);
-	CAN2_Send_Msg_WithID(JETSON_CAN_ID_GPS_C, frame_c, 8);
+	JetsonLink_Deliver8(JETSON_CAN_ID_GPS_C, frame_c, 8);
 }

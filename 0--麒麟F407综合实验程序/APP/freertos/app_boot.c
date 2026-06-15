@@ -20,6 +20,7 @@ void App_MotionHwInit(void)
 	JetsonCAN_Init();
 #else
 	USART3_Init();
+	JetsonCAN_Init();
 #endif
 	GPS_USART6_Init(9600);
 	DistanceSensor_Init();
@@ -36,8 +37,15 @@ void App_MotionHwInit(void)
 #endif
 	printf("[CAN1] Chassis PA11/12 init OK, MCR=0x%08X MSR=0x%08X\r\n",
 		(unsigned int)CAN1->MCR, (unsigned int)CAN1->MSR);
+#if ARBITER_IGNORE_DIST_SENSOR
+	printf("[MOTION] Dist sensor IGNORED, Jetson passthrough test, beep=OFF\r\n");
+#else
 	printf("[MOTION] Dist ctrl ON, wait Jetson V3, beep=%s (KEY1 toggle)\r\n",
 		g_beep_dist_enable ? "ON" : "OFF");
+#endif
+#if !JETSON_LINK_CAN
+	printf("[JETSON] RS232 also sends GPS/0x108/0x109/0x10B via 0xA5 service frames\r\n");
+#endif
 	printf("[GPS] USART6 RX ready on PC7 (TX=PC6), auto cfg: GPS+BDS 5Hz RMC/GGA/GSA\r\n");
 }
 

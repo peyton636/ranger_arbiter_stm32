@@ -170,9 +170,25 @@ static void Arbiter_PolicyEmergencyStop(u8 rule)
 	arb_last_policy_rule = rule;
 }
 
+#if ARBITER_IGNORE_DIST_SENSOR
+static void Arbiter_ForceClearObstacles(void)
+{
+	arb_state.obstacle_dist.front = ARBITER_DIST_MAX_MM;
+	arb_state.obstacle_dist.back = ARBITER_DIST_MAX_MM;
+	arb_state.obstacle_dist.left = ARBITER_DIST_MAX_MM;
+	arb_state.obstacle_dist.right = ARBITER_DIST_MAX_MM;
+	arb_state.obstacle_valid_mask = 0x0F;
+	arb_state.nearest_dist = ARBITER_DIST_MAX_MM;
+	arb_state.obstacle_detected = 0;
+}
+#endif
+
 /* 四向均进入危险区(<=NEAR)才真急停；单向前近但侧/后有空间走 R2/R6 等 */
 static u8 Arbiter_AllDirectionsDanger(void)
 {
+#if ARBITER_IGNORE_DIST_SENSOR
+	return 0;
+#else
 	u16 f = arb_state.obstacle_dist.front;
 	u16 b = arb_state.obstacle_dist.back;
 	u16 l = arb_state.obstacle_dist.left;
@@ -187,6 +203,7 @@ static u8 Arbiter_AllDirectionsDanger(void)
 	u8 dr = vr ? Arbiter_IsDangerDist(r) : 1;
 
 	return (df && db && dl && dr) ? 1 : 0;
+#endif
 }
 
 static u16 Arbiter_MinDistance4(u16 a, u16 b, u16 c, u16 d)
@@ -921,9 +938,16 @@ void Arbiter_Init(void)
 	arb_state.obstacle_dist.right = ARBITER_DIST_UNKNOWN;
 	arb_state.obstacle_valid_mask = 0;
 
+#if ARBITER_IGNORE_DIST_SENSOR
+	Arbiter_ForceClearObstacles();
+#endif
+
 	arb_policy_chassis_mode = CAN_MOTION_ACKERMANN;
 	
 	printf("[Arbiter] Initialized, mode: %s\r\n", ARBITER_MODE_NAMES[arb_state.current_mode]);
+#if ARBITER_IGNORE_DIST_SENSOR
+	printf("[Arbiter] IGNORE dist sensor (ARBITER_IGNORE_DIST_SENSOR=1), Jetson passthrough\r\n");
+#endif
 }
 
 /*******************************************************************************
@@ -1056,6 +1080,13 @@ void Arbiter_SetObstacleDistance(u16 dist_mm)
 
 void Arbiter_SetObstacleDistances(u16 front_mm, u16 back_mm, u16 left_mm, u16 right_mm)
 {
+#if ARBITER_IGNORE_DIST_SENSOR
+	(void)front_mm;
+	(void)back_mm;
+	(void)left_mm;
+	(void)right_mm;
+	Arbiter_ForceClearObstacles();
+#else
 	u8 valid_f = Arbiter_IsValidDist(front_mm);
 	u8 valid_b = Arbiter_IsValidDist(back_mm);
 	u8 valid_l = Arbiter_IsValidDist(left_mm);
@@ -1081,6 +1112,7 @@ void Arbiter_SetObstacleDistances(u16 front_mm, u16 back_mm, u16 left_mm, u16 ri
 	/* 动态 FAR：速度越高，越提前进入限速区 */
 	arb_state.obstacle_detected = (arb_state.nearest_dist != ARBITER_DIST_UNKNOWN &&
 		arb_state.nearest_dist <= far_dyn) ? 1 : 0;
+#endif
 }
 
 /*******************************************************************************
@@ -1171,12 +1203,14 @@ static void Arbiter_ProcessNormalMode(void)
 		return;
 	}
 	
+#if !ARBITER_IGNORE_DIST_SENSOR
 	// 检查是否有障碍物或前向传感器无效
 	if(arb_state.obstacle_detected || !(arb_state.obstacle_valid_mask & 0x01))
 	{
 		Arbiter_SwitchMode(ARBITER_MODE_SPEED_LIMIT);
 		return;
 	}
+#endif
 	
 	// 正常模式：透传 Jetson 指令（v=0 即停车）
 	arb_state.output.v = Arbiter_ClampSpeed(arb_state.jetson_cmd.v);

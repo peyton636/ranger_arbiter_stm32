@@ -46,6 +46,9 @@ void JetsonCAN_ProcessRx(const ArbiterState_t *state, u16 nearest_mm);
 
 u8 JetsonCAN_GetFrame(u8 *frame);
 
+void JetsonCAN_HandleServiceRequest(u32 can_id, const u8 *buf, u8 dlc,
+	const ArbiterState_t *state, u16 nearest_mm);
+
 void JetsonCAN_ServiceFault(const ArbiterState_t *state);
 
 void JetsonCAN_SendV3Frame(u32 can_id, const u8 *frame);

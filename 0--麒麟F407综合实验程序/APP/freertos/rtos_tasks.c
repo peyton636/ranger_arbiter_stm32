@@ -145,20 +145,31 @@ void vJetsonTask(void *pvParameters)
 
 		DistSnapshot_Read(&f, &b, &l, &r, &n);
 
-		App_ArbiterLock();
 #if JETSON_LINK_CAN
 		JetsonCAN_ProcessRx(&arb_state, n);
+#else
+		{
+			u32 svc_id;
+			u8 svc_buf[8];
+
+			if(USART3_GetServiceRequest(&svc_id, svc_buf))
+				JetsonCAN_HandleServiceRequest(svc_id, svc_buf, 8, &arb_state, n);
+		}
+#endif
+
+		App_ArbiterLock();
+		
+#if JETSON_LINK_CAN
 		if(JetsonCAN_GetFrame(jetson_frame))
 #else
 		if(USART3_GetJetsonFrame(jetson_frame))
 #endif
+		
 		{
 			if(Arbiter_ParseJetsonCmd(jetson_frame, JETSON_FRAME_LEN) != 0)
 				RTOS_PRINT("[JETSON CMD] parse failed\r\n");
 		}
-#if JETSON_LINK_CAN
 		JetsonCAN_ServiceFault(&arb_state);
-#endif
 		if(s_jetson_tx_toggle == 0)
 		{
 			USART3_SendV3StatusFrame(&arb_state, f, b, l, r);
@@ -183,9 +194,7 @@ void vGpsTask(void *pvParameters)
 	{
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(GPS_TASK_CYCLE_MS));
 		GPS_Process();
-#if JETSON_LINK_CAN
 		JetsonCAN_SendGps(GPS_GetData());
-#endif
 		GPS_PrintStatus();
 	}
 }

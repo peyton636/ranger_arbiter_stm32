@@ -23,13 +23,24 @@
 #define JETSON_CAN_ID_STATUS_RSP   0x10Bu
 
 #define JETSON_CAN_CMD_TIME_SYNC   0x01u
+#define JETSON_CAN_CMD_TIME_START  0x02u
+#define JETSON_CAN_CMD_TIME_PING   0x03u
+#define JETSON_CAN_CMD_TIME_STOP   0x04u
 #define JETSON_CAN_CMD_STATUS_QRY  0x01u
+
+#define JETSON_TIME_FLAG_GPS_UTC   0x01u
+#define JETSON_TIME_FLAG_RTC_VALID 0x02u
+#define JETSON_TIME_FLAG_RTC_GPS   0x04u
 
 #define JETSON_CAN_GPS_MAGIC       0xA4u
 #define JETSON_CAN_GPS_FRAG_GAP_MS 2u
 
 #define JETSON_CAN_V3_FRAG_CNT 3u
 #define JETSON_CAN_V3_FRAG_LEN 8u
+
+/* RS232 上传输与 CAN 等价的 8B 服务帧： [0xA5][ID_H][ID_L][8B payload] */
+#define JETSON_RS232_SVC_MAGIC  0xA5u
+#define JETSON_RS232_SVC_LEN    11u
 
 void CAN2_Mode_Init(u8 tsjw, u8 tbs2, u8 tbs1, u16 brp, u8 mode);
 void CAN2_Init_Jetson(void);

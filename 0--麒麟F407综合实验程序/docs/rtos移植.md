@@ -202,7 +202,7 @@ flowchart LR
 | **KeyTask**    | **4** | 20ms        | 256w | **仅** 按键：`MotionControl_KeyProcess()`                       |
 | **JetsonTask** | **3** | 20ms        | 384w | **仅** Jetson 收发 + V3 上行                                     |
 | **UiTask**     | **3** | Notify+50ms | 768w | LCD；`DrainLog` / 分频 `DistanceSensor_Print`；栈水位打印            |
-| **GpsTask**    | **2** | 100ms       | 512w | **仅** GPS：`GPS_Process()`；CAN 模式下 `JetsonCAN_SendGps()` |
+| **GpsTask**    | **2** | 100ms       | 512w | **仅** GPS：`GPS_Process()`；CAN 模式下 `JetsonCAN_SendGps()`     |
 | IdleTask       | 0     | —           | 128w | 内核内置                                                        |
 
 
@@ -304,7 +304,7 @@ main()
 | `APP/freertos/rtos_debug.c/h`       | 栈水位打印                                                                                     |
 | `APP/freertos/motion_ui_shared.c/h` | 距离快照、`g_*_dist_mm`、`g_*_dirty`、`xArbMutex`                                                |
 | `APP/freertos/motion_control.c/h`   | `MotionControl_Run()`、`MotionControl_KeyProcess()`、`MotionControl_BeepUpdateByDistance()` |
-| `APP/freertos/sensor_ui.c/h`        | LCD（`SensorUI_`*、`Chassis_UpdateOnLCD`）                                                   |
+| `APP/freertos/sensor_ui.c/h`        | LCD（`SensorUI`_*、`Chassis_UpdateOnLCD`）                                                   |
 | `Public/usart.c`                    | `fputc` + `Usart_PrintMutexInit/Lock/Unlock`                                              |
 | `User/main.c`                       | `Hardware_Check` → `App_MotionHwInit` → `App_ShowBootSplash` → `RTOS_AppStart`            |
 
@@ -577,18 +577,22 @@ TIM4_IRQHandler (20ms)
 
 #### 编译 / 工程
 
-| 现象 | 原因 | 处理 |
-|------|------|------|
-| `cannot open "jetson_can.h"` | Keil Include Path 缺 `APP\jetson_can` | `Template.uvprojx` 已补 |
-| `JETSON_CAN_ID_STATUS` 未定义（`JETSON_LINK_CAN=0`） | `can2.h` 仅在 CAN 宏内包含 | `usart3.c` 始终 `#include "can2.h"` |
+
+| 现象                                              | 原因                                   | 处理                                |
+| ----------------------------------------------- | ------------------------------------ | --------------------------------- |
+| `cannot open "jetson_can.h"`                    | Keil Include Path 缺 `APP\jetson_can` | `Template.uvprojx` 已补             |
+| `JETSON_CAN_ID_STATUS` 未定义（`JETSON_LINK_CAN=0`） | `can2.h` 仅在 CAN 宏内包含                 | `usart3.c` 始终 `#include "can2.h"` |
+
 
 #### Flash Fat 自检
 
-| 串口 | 含义 |
-|------|------|
-| `[FAT] 1: getfree err=13` | FatFs **FR_NO_FILESYSTEM**（`1:` 无有效 FAT） |
+
+| 串口                             | 含义                                                            |
+| ------------------------------ | ------------------------------------------------------------- |
+| `[FAT] 1: getfree err=13`      | FatFs **FR_NO_FILESYSTEM**（`1:` 无有效 FAT）                      |
 | `[FAT] mkfs 1: failed, err=12` | **FR_NOT_ENABLED** — 曾 `f_mount(NULL,"1:",0)` 卸载后再 mkfs，工作区丢失 |
-| `[FAT] … (arbiter skip, …)` | `UI_TEST_MODE=1` **不卡死**，Flash Disk 行显示 **SKIP** |
+| `[FAT] … (arbiter skip, …)`    | `UI_TEST_MODE=1` **不卡死**，Flash Disk 行显示 **SKIP**              |
+
 
 **说明**：运动仲裁 **不依赖** SPI Flash 前 12MB 的 Fat 分区；字库在 **12MB 以后** 直读 EN25Q128（`font_init()`）。  
 **修复**：`getfree` 失败时 **保持** `f_mount(fs[1],"1:",1)` 再 `f_mkfs`；仍失败则 SKIP 继续启动。  
@@ -604,13 +608,15 @@ TIM4_IRQHandler (20ms)
 
 #### 已知问题：KEY0 FORCE STOP 无法 OFF（已修）
 
-| 现象 | 原因 |
-|------|------|
+
+| 现象                                                           | 原因                                                                                                                                           |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | 按 KEY0 出现 `[CTRL] FORCE STOP ON`，再按无 `[CTRL] FORCE STOP OFF` | ① `KEY_Scan()` 静态变量 `key` 释放条件含 **KEY_UP==0**，KEY_UP 误读为高则 **key 永不清 1**；② **TIM2 100ms ISR** 内 `KEY_Scan(1)+delay_ms` 与 **KeyTask** 抢同一静态状态 |
+
 
 **修复**（已合入）：
 
-1. `key.c`：释放判定改为 **KEY0/1/2 均松开** 即可，不依赖 KEY_UP  
+1. `key.c`：释放判定改为 **KEY0/1/2 均松开** 即可，不依赖 KEY_UP
 2. `app_boot.c`：`App_MotionHwInit()` 内 **关闭 TIM2** 中断（PRECHIN 拍照用，仲裁模式不需要）
 
 **验证**：KEY0 第一次 → `FORCE STOP ON` + LCD `STOP:ON KEY0=resume`；再按 → `FORCE STOP OFF -> Arbiter restart`
@@ -624,7 +630,7 @@ TIM4_IRQHandler (20ms)
 - [x] CAN 底盘反馈 / 轮速打印
 - [x] GPS 配置完成
 - [ ] Jetson 下行 / 上行（需接链路）
-- [ ] KEY0 STOP ON/OFF _toggle_（待本修复烧录复测）
+- [ ] KEY0 STOP ON/OFF *toggle*（待本修复烧录复测）
 - [ ] KEY1 蜂鸣开关
 
 **性能 / 可靠性**
@@ -651,11 +657,13 @@ TIM4_IRQHandler (20ms)
 
 ## 阶段 2：Jetson CAN 化 + ISR 队列
 
-| 文档 | 内容 |
-|------|------|
-| [硬件连接与通信协议.md §2.2](./硬件连接与通信协议.md) | CAN / RS232 **编译切换**与接线 |
-| [Jetson_CAN协议.md](./Jetson_CAN协议.md) | CAN2 协议（默认） |
-| [Jetson_RS232协议.md](./Jetson_RS232协议.md) | USART2 备用链路 |
+
+| 文档                                       | 内容                      |
+| ---------------------------------------- | ----------------------- |
+| [硬件连接与通信协议.md §2.2](./硬件连接与通信协议.md)      | CAN / RS232 **编译切换**与接线 |
+| [Jetson_CAN协议.md](./Jetson_CAN协议.md)     | CAN2 协议（默认）             |
+| [Jetson_RS232协议.md](./Jetson_RS232协议.md) | USART2 备用链路             |
+
 
 ```
 ├─ Jetson 链路：CAN2 PB5/PB6（默认）或 USART2 PA2/PA3；宏 JETSON_LINK_CAN  [软件 ✅]

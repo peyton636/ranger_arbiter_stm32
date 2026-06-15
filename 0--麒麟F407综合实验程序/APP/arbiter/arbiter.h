@@ -153,6 +153,12 @@ typedef enum
 #define ARBITER_DIST_FAILSAFE_MM      0u
 #define ARBITER_DIST_MAX_MM           59999u
 
+/* 联调 Jetson 直接控车：1=四向测距不参与仲裁（透传指令，不因传感器无效/超时进 EMERGENCY）
+ * 量产或现场避障：0（默认） */
+#ifndef ARBITER_IGNORE_DIST_SENSOR
+#define ARBITER_IGNORE_DIST_SENSOR    1   /* Jetson 联调设 1；量产/避障必改 0 */
+#endif
+
 // 速度限幅参数（mm/s）
 #define ARBITER_MAX_SPEED_MM_S        1000  // 最大速度
 #define ARBITER_MIN_SPEED_MM_S        0     // 最小速度

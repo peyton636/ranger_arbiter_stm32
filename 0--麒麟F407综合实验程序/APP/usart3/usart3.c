@@ -10,10 +10,18 @@
 #define JETSON_RX_DEBUG 0
 
 // 接收缓冲区
+#define USART3_RX_MODE_IDLE  0
+#define USART3_RX_MODE_V3    1
+#define USART3_RX_MODE_SVC   2
+
+static u8 usart3_rx_mode = USART3_RX_MODE_IDLE;
 static u8 usart3_rx_buf[JETSON_V3_FRAME_LEN];
 static u8 usart3_rx_idx = 0;
 static u8 usart3_frame_ready = 0;
 static u8 usart3_complete_frame[JETSON_V3_FRAME_LEN];
+static u8 usart3_svc_ready = 0;
+static u32 usart3_svc_can_id = 0;
+static u8 usart3_svc_payload[8];
 static u8 jetson_tx_seq = 0;
 
 static void USART3_PrintRxFrame(const u8 *frame)
@@ -137,7 +145,8 @@ void USART3_Init(void)
 
 	// 配置 USART2 中断
 	NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+	/* 优先级须 >= configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY(5)，FromISR 才合法 */
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 6;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&NVIC_InitStructure);
@@ -170,6 +179,26 @@ void USART3_SendData(u8* data, u16 len)
 {
 	while(len--)
 		USART3_SendByte(*data++);
+}
+
+void USART3_SendServiceFrame(u32 can_id, const u8 *payload, u8 len)
+{
+	u8 frame[JETSON_RS232_SVC_LEN];
+	u8 i;
+	u8 copy_len;
+
+	if(!payload)
+		return;
+	if(len > JETSON_CAN_V3_FRAG_LEN)
+		len = JETSON_CAN_V3_FRAG_LEN;
+
+	frame[0] = JETSON_RS232_SVC_MAGIC;
+	frame[1] = (u8)((can_id >> 8) & 0xFF);
+	frame[2] = (u8)(can_id & 0xFF);
+	copy_len = len;
+	for(i = 0; i < JETSON_CAN_V3_FRAG_LEN; i++)
+		frame[3 + i] = (i < copy_len) ? payload[i] : 0;
+	USART3_SendData(frame, JETSON_RS232_SVC_LEN);
 }
 #endif
 
@@ -272,33 +301,57 @@ void USART3_SendV3DetailFrame(const ArbiterState_t *state)
 *******************************************************************************/
 void USART3_ProcessRxByte(u8 byte)
 {
-	// 查找帧头
-	if(usart3_rx_idx == 0)
+	u8 i;
+
+	if(usart3_rx_mode == USART3_RX_MODE_IDLE)
 	{
 		if(byte == JETSON_FRAME_HEADER)
 		{
 			usart3_rx_buf[0] = byte;
 			usart3_rx_idx = 1;
+			usart3_rx_mode = USART3_RX_MODE_V3;
 		}
+		else if(byte == JETSON_RS232_SVC_MAGIC)
+		{
+			usart3_rx_buf[0] = byte;
+			usart3_rx_idx = 1;
+			usart3_rx_mode = USART3_RX_MODE_SVC;
+		}
+		return;
 	}
-	else
+
+	usart3_rx_buf[usart3_rx_idx] = byte;
+	usart3_rx_idx++;
+
+	if(usart3_rx_mode == USART3_RX_MODE_V3)
 	{
-		usart3_rx_buf[usart3_rx_idx] = byte;
-		usart3_rx_idx++;
-		
-		// 接收完整帧
 		if(usart3_rx_idx >= JETSON_V3_FRAME_LEN)
 		{
-			// 复制完整帧
-			u8 i;
 			for(i = 0; i < JETSON_V3_FRAME_LEN; i++)
-			{
 				usart3_complete_frame[i] = usart3_rx_buf[i];
-			}
 			USART3_PrintRxFrame(usart3_complete_frame);
 			usart3_frame_ready = 1;
+			usart3_rx_mode = USART3_RX_MODE_IDLE;
 			usart3_rx_idx = 0;
 		}
+		return;
+	}
+
+	if(usart3_rx_mode == USART3_RX_MODE_SVC && usart3_rx_idx >= JETSON_RS232_SVC_LEN)
+	{
+		u32 can_id;
+		u8 payload[8];
+
+		can_id = ((u32)usart3_rx_buf[1] << 8) | usart3_rx_buf[2];
+		for(i = 0; i < 8; i++)
+			payload[i] = usart3_rx_buf[3 + i];
+
+		usart3_svc_can_id = can_id;
+		for(i = 0; i < 8; i++)
+			usart3_svc_payload[i] = payload[i];
+		usart3_svc_ready = 1;
+		usart3_rx_mode = USART3_RX_MODE_IDLE;
+		usart3_rx_idx = 0;
 	}
 }
 
@@ -321,6 +374,20 @@ u8 USART3_GetJetsonFrame(u8* frame)
 		return 1;
 	}
 	return 0;
+}
+
+u8 USART3_GetServiceRequest(u32 *can_id, u8 *payload)
+{
+	u8 i;
+
+	if(!usart3_svc_ready || !can_id || !payload)
+		return 0;
+
+	*can_id = usart3_svc_can_id;
+	for(i = 0; i < 8; i++)
+		payload[i] = usart3_svc_payload[i];
+	usart3_svc_ready = 0;
+	return 1;
 }
 
 /*******************************************************************************

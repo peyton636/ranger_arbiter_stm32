@@ -40,6 +40,8 @@
 .\obj\jetson_can.o: .\APP\gps\gps.h
 .\obj\jetson_can.o: .\APP\can\can2.h
 .\obj\jetson_can.o: .\APP\distance_sensor\distance_sensor.h
+.\obj\jetson_can.o: .\APP\beep\beep.h
+.\obj\jetson_can.o: .\APP\usart3\usart3.h
 .\obj\jetson_can.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
 .\obj\jetson_can.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
 .\obj\jetson_can.o: .\User\FreeRTOSConfig.h

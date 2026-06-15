@@ -54,6 +54,10 @@ void MotionControl_KeyProcess(void)
 
 void MotionControl_BeepUpdateByDistance(u16 nearest_mm)
 {
+#if ARBITER_IGNORE_DIST_SENSOR
+	(void)nearest_mm;
+	BEEP_SetVolume(0);
+#else
 	u8 vol;
 
 	if(!g_beep_dist_enable || nearest_mm == DS_DIST_UNKNOWN)
@@ -71,6 +75,7 @@ void MotionControl_BeepUpdateByDistance(u16 nearest_mm)
 			(ARBITER_OBSTACLE_FAR_MM - ARBITER_OBSTACLE_WARN_MM));
 
 	BEEP_SetVolume(vol);
+#endif
 }
 
 void MotionControl_Run(void)
