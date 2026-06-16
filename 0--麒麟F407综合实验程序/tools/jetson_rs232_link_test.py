@@ -27,6 +27,9 @@ V3_MAGIC = 0xAA
 V3_LEN = 24
 SVC_MAGIC = 0xA5
 SVC_LEN = 11
+BLOB_MAGIC = 0xAB
+BLOB_HDR_LEN = 9
+BLOB_CTRL_PAYLOAD = 14
 
 
 def open_port(port: str, baud: int) -> serial.Serial:
@@ -60,10 +63,30 @@ def build_v3_down(seq: int, v_mm_s: int = 100) -> bytes:
     return bytes(frame)
 
 
+def build_blob_control(seq: int, v_mm_s: int = 0) -> bytes:
+    """BLOB MSG 0x01 agv_control_t (23 bytes wire)."""
+    ts = int(time.monotonic() * 1000) & 0xFFFFFFFF
+    payload = struct.pack(
+        ">IhhhBBBB",
+        ts,
+        v_mm_s,
+        0,
+        0,
+        0x01,  # control_mode = CAN control
+        0x00,
+        0x00,
+        0x00,
+    )
+    hdr = bytes([BLOB_MAGIC, 0x01, 0x01, seq & 0xFF, 0x00, 0x0E, 0x00, 0x01, 0x00])
+    return hdr + payload
+
+
+
 class StreamStats:
     def __init__(self) -> None:
         self.total = 0
         self.aa = 0
+        self.ab = 0
         self.a5 = 0
         self.ascii_n = 0
         self.v3_down = 0
@@ -71,6 +94,9 @@ class StreamStats:
         self.v3_up_ex = 0
         self.v3_bad_xor = 0
         self.svc_frames = 0
+        self.blob_02 = 0
+        self.blob_03 = 0
+        self.blob_01 = 0
         self._buf = bytearray()
 
     def feed(self, data: bytes) -> None:
@@ -82,6 +108,19 @@ class StreamStats:
         i = 0
         while i < len(self._buf):
             b = self._buf[i]
+            if b == BLOB_MAGIC and i + BLOB_HDR_LEN <= len(self._buf):
+                ln = (self._buf[i + 4] << 8) | self._buf[i + 5]
+                need = BLOB_HDR_LEN + ln
+                if i + need <= len(self._buf):
+                    msg_id = self._buf[i + 2]
+                    if msg_id == 0x01:
+                        self.blob_01 += 1
+                    elif msg_id == 0x02:
+                        self.blob_02 += 1
+                    elif msg_id == 0x03:
+                        self.blob_03 += 1
+                    i += need
+                    continue
             if b == V3_MAGIC and i + V3_LEN <= len(self._buf):
                 frame = bytes(self._buf[i : i + V3_LEN])
                 if xor_v3(frame) == frame[23]:
@@ -100,7 +139,9 @@ class StreamStats:
                 self.svc_frames += 1
                 i += SVC_LEN
                 continue
-            if b == V3_MAGIC:
+            if b == BLOB_MAGIC:
+                self.ab += 1
+            elif b == V3_MAGIC:
                 self.aa += 1
             elif b == SVC_MAGIC:
                 self.a5 += 1
@@ -110,10 +151,23 @@ class StreamStats:
         if i > 0:
             del self._buf[:i]
 
-    def report(self, seconds: float, label: str) -> None:
+    def report(self, seconds: float, label: str, blob_mode: bool = False) -> None:
         v3_up = self.v3_up_st + self.v3_up_ex
+        blob_up = self.blob_02 + self.blob_03
         print(f"\n=== {label} ({seconds}s) ===")
         print(f"  total_rx     = {self.total} bytes")
+        if blob_mode:
+            print(f"  BLOB uplink  = {blob_up}  (0x02 motion={self.blob_02}, 0x03 status={self.blob_03})")
+            print(f"  BLOB down    = {self.blob_01} (from MCU, expect 0)")
+            print(f"  service 0xA5 = {self.svc_frames}")
+            print(f"  raw AB/AA/A5 = {self.ab}/{self.aa}/{self.a5}")
+            if self.total == 0:
+                print("  VERDICT: FAIL - no data (check wiring / port / MCU running)")
+            elif blob_up == 0:
+                print("  VERDICT: FAIL - no BLOB uplink from MCU (~25+ Hz 0x02 expected)")
+            else:
+                print(f"  VERDICT: OK uplink ~{blob_up / seconds:.1f} BLOB frames/s")
+            return
         print(f"  V3 uplink    = {v3_up}  (0x02 status={self.v3_up_st}, 0x03 detail={self.v3_up_ex})")
         print(f"  V3 downlink  = {self.v3_down}")
         print(f"  service 0xA5 = {self.svc_frames}")
@@ -129,7 +183,7 @@ class StreamStats:
             print(f"  VERDICT: OK uplink ~{rate:.1f} frames/s")
 
 
-def listen(ser: serial.Serial, seconds: float, label: str) -> StreamStats:
+def listen(ser: serial.Serial, seconds: float, label: str, blob_mode: bool = False) -> StreamStats:
     st = StreamStats()
     end = time.monotonic() + seconds
     while time.monotonic() < end:
@@ -138,8 +192,27 @@ def listen(ser: serial.Serial, seconds: float, label: str) -> StreamStats:
             st.feed(ser.read(n))
         else:
             time.sleep(0.005)
-    st.report(seconds, label)
+    st.report(seconds, label, blob_mode=blob_mode)
     return st
+
+
+def send_blob_heartbeat(ser: serial.Serial, seconds: float, hz: float = 50.0) -> int:
+    interval = 1.0 / hz
+    end = time.monotonic() + seconds
+    seq = 0
+    sent = 0
+    next_t = time.monotonic()
+    while time.monotonic() < end:
+        now = time.monotonic()
+        if now >= next_t:
+            ser.write(build_blob_control(seq))
+            ser.flush()
+            seq = (seq + 1) & 0xFF
+            sent += 1
+            next_t += interval
+        else:
+            time.sleep(0.001)
+    return sent
 
 
 def send_heartbeat(ser: serial.Serial, seconds: float, hz: float = 50.0) -> int:
@@ -163,11 +236,12 @@ def send_heartbeat(ser: serial.Serial, seconds: float, hz: float = 50.0) -> int:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Jetson RS232 V3 link test (USART2)")
+    ap = argparse.ArgumentParser(description="Jetson RS232 link test (V3 or BLOB v2)")
     ap.add_argument("--port", required=True)
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--time", type=float, default=5.0, help="test duration seconds")
     ap.add_argument("--listen-only", action="store_true", help="only receive, no TX")
+    ap.add_argument("--blob-v2", action="store_true", help="send/receive BLOB 0xAB (MCU BLOB firmware)")
     ap.add_argument("--hz", type=float, default=50.0, help="downlink rate when sending")
     args = ap.parse_args()
 
@@ -177,34 +251,44 @@ def main() -> None:
     ser.reset_input_buffer()
 
     if args.listen_only:
-        st = listen(ser, args.time, "listen-only")
+        st = listen(ser, args.time, "listen-only", blob_mode=args.blob_v2)
         ser.close()
-        sys.exit(0 if (st.total > 0 and st.v3_up_st + st.v3_up_ex > 0) else 1)
+        if args.blob_v2:
+            ok = st.total > 0 and (st.blob_02 + st.blob_03) > 0
+        else:
+            ok = st.total > 0 and (st.v3_up_st + st.v3_up_ex) > 0
+        sys.exit(0 if ok else 1)
 
-    # bidirectional: listen while sending heartbeat
     st = StreamStats()
     end = time.monotonic() + args.time
     seq = 0
     interval = 1.0 / args.hz
     next_tx = time.monotonic()
     sent = 0
-    print(f"Sending V3 down @ {args.hz} Hz for {args.time}s (check Windows for [JETSON CMD])...")
+    proto = "BLOB 0x01" if args.blob_v2 else "V3 0xAA"
+    print(f"Sending {proto} down @ {args.hz} Hz for {args.time}s (check F407 debug for [JETSON BLOB CMD])...")
+    if args.blob_v2 and sent == 0:
+        sample = build_blob_control(1)
+        print(f"  TX sample hex: {sample.hex()}")
     while time.monotonic() < end:
         n = ser.in_waiting
         if n:
             st.feed(ser.read(n))
         now = time.monotonic()
         if now >= next_tx:
-            ser.write(build_v3_down(seq))
+            if args.blob_v2:
+                ser.write(build_blob_control(seq))
+            else:
+                ser.write(build_v3_down(seq))
             ser.flush()
             seq = (seq + 1) & 0xFF
             sent += 1
             next_tx += interval
         else:
             time.sleep(0.001)
-    st.report(args.time, "bidirectional")
-    print(f"  sent_down    = {sent} V3 frames")
-    print("  Check Windows USART1: should see motion / arbiter react if downlink OK")
+    st.report(args.time, "bidirectional", blob_mode=args.blob_v2)
+    print(f"  sent_down    = {sent} frames ({proto})")
+    print("  Check F407 USART1: [JETSON BLOB RX/CMD] or [JETSON RX] magic AB/A5/AA")
     ser.close()
     sys.exit(0 if sent > 0 else 1)
 

@@ -1,11 +1,10 @@
 .\obj\rtos_tasks.o: APP\freertos\rtos_tasks.c
 .\obj\rtos_tasks.o: APP\freertos\rtos_tasks.h
-.\obj\rtos_tasks.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
-.\obj\rtos_tasks.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
-.\obj\rtos_tasks.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdint.h
-.\obj\rtos_tasks.o: .\User\FreeRTOSConfig.h
+.\obj\rtos_tasks.o: APP\freertos\app_boot.h
+.\obj\rtos_tasks.o: .\Public\system.h
 .\obj\rtos_tasks.o: .\User\stm32f4xx.h
 .\obj\rtos_tasks.o: .\Libraries\CMSIS\core_cm4.h
+.\obj\rtos_tasks.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdint.h
 .\obj\rtos_tasks.o: .\Libraries\CMSIS\core_cmInstr.h
 .\obj\rtos_tasks.o: .\Libraries\CMSIS\core_cmFunc.h
 .\obj\rtos_tasks.o: .\Libraries\CMSIS\core_cmSimd.h
@@ -38,6 +37,9 @@
 .\obj\rtos_tasks.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h
 .\obj\rtos_tasks.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h
 .\obj\rtos_tasks.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
+.\obj\rtos_tasks.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
+.\obj\rtos_tasks.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\obj\rtos_tasks.o: .\User\FreeRTOSConfig.h
 .\obj\rtos_tasks.o: .\Middlewares\FreeRTOS\include\projdefs.h
 .\obj\rtos_tasks.o: .\Middlewares\FreeRTOS\include\portable.h
 .\obj\rtos_tasks.o: .\Middlewares\FreeRTOS\include\deprecated_definitions.h
@@ -49,7 +51,6 @@
 .\obj\rtos_tasks.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\obj\rtos_tasks.o: APP\freertos\rtos_debug.h
 .\obj\rtos_tasks.o: APP\freertos\motion_ui_shared.h
-.\obj\rtos_tasks.o: .\Public\system.h
 .\obj\rtos_tasks.o: .\APP\distance_sensor\distance_sensor.h
 .\obj\rtos_tasks.o: .\Middlewares\FreeRTOS\include\semphr.h
 .\obj\rtos_tasks.o: .\Middlewares\FreeRTOS\include\queue.h
@@ -60,3 +61,6 @@
 .\obj\rtos_tasks.o: .\APP\usart3\usart3.h
 .\obj\rtos_tasks.o: .\APP\jetson_can\jetson_can.h
 .\obj\rtos_tasks.o: .\APP\gps\gps.h
+.\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_wire.h
+.\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_pack.h
+.\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_rs232.h

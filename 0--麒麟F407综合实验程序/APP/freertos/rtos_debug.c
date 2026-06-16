@@ -20,5 +20,8 @@ void RTOS_PrintTaskStackWatermarks(void)
 	RTOS_LogStackFree(xKeyTaskHandle);
 	RTOS_LogStackFree(xJetsonTaskHandle);
 	RTOS_LogStackFree(xGpsTaskHandle);
+#if ETH_LWIP_ENABLE
+	RTOS_LogStackFree(xNetTaskHandle);
+#endif
 	RTOS_LogStackFree(xUiTaskHandle);
 }

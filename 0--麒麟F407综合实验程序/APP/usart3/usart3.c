@@ -6,6 +6,15 @@
 #if JETSON_LINK_CAN
 #include "jetson_can.h"
 #endif
+#if !JETSON_LINK_CAN
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "task.h"
+#include "agv_blob_wire.h"
+#if JETSON_USE_BLOB_V2
+#include "agv_blob_rs232.h"
+#endif
+#endif
 
 #define JETSON_RX_DEBUG 0
 
@@ -13,6 +22,7 @@
 #define USART3_RX_MODE_IDLE  0
 #define USART3_RX_MODE_V3    1
 #define USART3_RX_MODE_SVC   2
+#define USART3_RX_MODE_BLOB  3
 
 static u8 usart3_rx_mode = USART3_RX_MODE_IDLE;
 static u8 usart3_rx_buf[JETSON_V3_FRAME_LEN];
@@ -23,6 +33,60 @@ static u8 usart3_svc_ready = 0;
 static u32 usart3_svc_can_id = 0;
 static u8 usart3_svc_payload[8];
 static u8 jetson_tx_seq = 0;
+
+#if !JETSON_LINK_CAN
+static volatile u32 s_usart2_rx_bytes = 0;
+static volatile u32 s_usart2_ore_cnt = 0;
+static volatile u32 s_usart2_ab_idle = 0;
+static volatile u32 s_usart2_raw_ab = 0;
+static volatile u32 s_usart2_raw_a5 = 0;
+static volatile u32 s_usart2_raw_aa = 0;
+static SemaphoreHandle_t s_usart2_tx_mutex = NULL;
+
+static void USART3_TxLock(void)
+{
+	if(s_usart2_tx_mutex != NULL &&
+	   xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+	{
+		xSemaphoreTake(s_usart2_tx_mutex, portMAX_DELAY);
+	}
+}
+
+static void USART3_TxUnlock(void)
+{
+	if(s_usart2_tx_mutex != NULL &&
+	   xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+	{
+		xSemaphoreGive(s_usart2_tx_mutex);
+	}
+}
+
+void USART3_TxMutexInit(void)
+{
+	if(s_usart2_tx_mutex == NULL)
+		s_usart2_tx_mutex = xSemaphoreCreateMutex();
+}
+
+void USART3_GetRxStats(u32 *rx_bytes, u32 *ore_cnt, u32 *ab_idle)
+{
+	if(rx_bytes) *rx_bytes = s_usart2_rx_bytes;
+	if(ore_cnt)  *ore_cnt  = s_usart2_ore_cnt;
+	if(ab_idle)  *ab_idle  = s_usart2_ab_idle;
+}
+
+void USART3_GetRxMagicStats(u32 *raw_ab, u32 *raw_a5, u32 *raw_aa)
+{
+	if(raw_ab) *raw_ab = s_usart2_raw_ab;
+	if(raw_a5) *raw_a5 = s_usart2_raw_a5;
+	if(raw_aa) *raw_aa = s_usart2_raw_aa;
+}
+
+void USART3_PrintHwDiag(void)
+{
+	printf("[JETSON HW] USART2 CR1=0x%04X SR=0x%04X | Jetson TX->PA3(RX) MCU TX=PA2\r\n",
+		(unsigned int)USART2->CR1, (unsigned int)USART2->SR);
+}
+#endif
 
 static void USART3_PrintRxFrame(const u8 *frame)
 {
@@ -177,8 +241,10 @@ void USART3_SendByte(u8 data)
 
 void USART3_SendData(u8* data, u16 len)
 {
+	USART3_TxLock();
 	while(len--)
 		USART3_SendByte(*data++);
+	USART3_TxUnlock();
 }
 
 void USART3_SendServiceFrame(u32 can_id, const u8 *payload, u8 len)
@@ -303,8 +369,31 @@ void USART3_ProcessRxByte(u8 byte)
 {
 	u8 i;
 
+	if(byte == 0xABu)
+		s_usart2_raw_ab++;
+	else if(byte == JETSON_RS232_SVC_MAGIC)
+		s_usart2_raw_a5++;
+	else if(byte == JETSON_FRAME_HEADER)
+		s_usart2_raw_aa++;
+
 	if(usart3_rx_mode == USART3_RX_MODE_IDLE)
 	{
+#if JETSON_USE_BLOB_V2
+		if(byte == BLOB_HDR_MAGIC)
+		{
+			s_usart2_ab_idle++;
+			BlobRs232_RxReset();
+			BlobRs232_RxFeed(byte);
+			usart3_rx_mode = USART3_RX_MODE_BLOB;
+		}
+		else if(byte == JETSON_RS232_SVC_MAGIC)
+		{
+			usart3_rx_buf[0] = byte;
+			usart3_rx_idx = 1;
+			usart3_rx_mode = USART3_RX_MODE_SVC;
+		}
+		/* BLOB 模式：IDLE 下忽略 0xAA，避免失步后误进 V3 吞掉后续 0xAB 帧头 */
+#else
 		if(byte == JETSON_FRAME_HEADER)
 		{
 			usart3_rx_buf[0] = byte;
@@ -317,14 +406,32 @@ void USART3_ProcessRxByte(u8 byte)
 			usart3_rx_idx = 1;
 			usart3_rx_mode = USART3_RX_MODE_SVC;
 		}
+#endif
 		return;
 	}
+
+#if JETSON_USE_BLOB_V2
+	if(usart3_rx_mode == USART3_RX_MODE_BLOB)
+	{
+		if(BlobRs232_RxFeed(byte))
+			usart3_rx_mode = USART3_RX_MODE_IDLE;
+		return;
+	}
+#endif
 
 	usart3_rx_buf[usart3_rx_idx] = byte;
 	usart3_rx_idx++;
 
 	if(usart3_rx_mode == USART3_RX_MODE_V3)
 	{
+		/* Jetson 下行仅 0x01；误同步时尽快退出，避免吞掉后续 0xAB */
+		if(usart3_rx_idx == 2 && usart3_rx_buf[1] != 0x01)
+		{
+			usart3_rx_mode = USART3_RX_MODE_IDLE;
+			usart3_rx_idx = 0;
+			USART3_ProcessRxByte(byte);
+			return;
+		}
 		if(usart3_rx_idx >= JETSON_V3_FRAME_LEN)
 		{
 			for(i = 0; i < JETSON_V3_FRAME_LEN; i++)
@@ -397,12 +504,17 @@ u8 USART3_GetServiceRequest(u32 *can_id, u8 *payload)
 void USART2_IRQHandler(void)
 {
 	u8 byte;
-	
-	if(USART_GetITStatus(USART2, USART_IT_RXNE) != RESET)
+	u32 sr;
+
+	sr = USART2->SR;
+	if(sr & USART_SR_ORE)
+		s_usart2_ore_cnt++;
+
+	if(sr & (USART_SR_RXNE | USART_SR_ORE))
 	{
-		byte = USART_ReceiveData(USART2);
+		byte = (u8)USART2->DR;
+		s_usart2_rx_bytes++;
 		USART3_ProcessRxByte(byte);
-		USART_ClearITPendingBit(USART2, USART_IT_RXNE);
 	}
 }
 #endif

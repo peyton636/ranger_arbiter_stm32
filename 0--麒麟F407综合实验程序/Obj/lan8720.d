@@ -42,3 +42,4 @@
 .\obj\lan8720.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\obj\lan8720.o: .\Public\SysTick.h
 .\obj\lan8720.o: .\Malloc\malloc.h
+.\obj\lan8720.o: .\APP\freertos\app_boot.h

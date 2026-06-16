@@ -1,6 +1,5 @@
 .\obj\app_boot.o: APP\freertos\app_boot.c
 .\obj\app_boot.o: APP\freertos\app_boot.h
-.\obj\app_boot.o: .\APP\usart3\usart3.h
 .\obj\app_boot.o: .\Public\system.h
 .\obj\app_boot.o: .\User\stm32f4xx.h
 .\obj\app_boot.o: .\Libraries\CMSIS\core_cm4.h
@@ -37,6 +36,7 @@
 .\obj\app_boot.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h
 .\obj\app_boot.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h
 .\obj\app_boot.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
+.\obj\app_boot.o: .\APP\usart3\usart3.h
 .\obj\app_boot.o: .\APP\arbiter\arbiter.h
 .\obj\app_boot.o: .\APP\jetson_can\jetson_can.h
 .\obj\app_boot.o: .\APP\gps\gps.h
@@ -58,4 +58,7 @@
 .\obj\app_boot.o: APP\freertos\sensor_ui.h
 .\obj\app_boot.o: .\APP\tftlcd\tftlcd.h
 .\obj\app_boot.o: .\APP\time\time.h
+.\obj\app_boot.o: .\Public\SysTick.h
+.\obj\app_boot.o: .\Malloc\malloc.h
 .\obj\app_boot.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\obj\app_boot.o: .\APP\agv_blob\agv_blob_wire.h

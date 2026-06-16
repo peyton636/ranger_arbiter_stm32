@@ -10,6 +10,16 @@
 #include "usart3.h"
 #include "jetson_can.h"
 #include "gps.h"
+#include "app_boot.h"
+#if ETH_LWIP_ENABLE
+#include "lwip_comm.h"
+#include "lan8720.h"
+#endif
+#include "agv_blob_wire.h"
+#if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
+#include "agv_blob_pack.h"
+#include "agv_blob_rs232.h"
+#endif
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -20,6 +30,9 @@ TaskHandle_t xKeyTaskHandle     = NULL;
 TaskHandle_t xJetsonTaskHandle  = NULL;
 TaskHandle_t xGpsTaskHandle     = NULL;
 TaskHandle_t xUiTaskHandle      = NULL;
+#if ETH_LWIP_ENABLE
+TaskHandle_t xNetTaskHandle     = NULL;
+#endif
 
 static u16 s_can_lcd_div = 0;
 static u8 s_jetson_tx_toggle = 0;
@@ -136,6 +149,12 @@ void vJetsonTask(void *pvParameters)
 	TickType_t xLastWakeTime = xTaskGetTickCount();
 	u8 jetson_frame[JETSON_FRAME_LEN];
 	u16 f, b, l, r, n;
+	u16 rx_stat_div = 0;
+	u32 rx_last_b = 0;
+	u32 rx_last_ab = 0;
+	u32 tx_last_b = 0;
+	u32 tx_last_m02 = 0;
+	u32 tx_last_m03 = 0;
 
 	(void)pvParameters;
 
@@ -158,18 +177,33 @@ void vJetsonTask(void *pvParameters)
 #endif
 
 		App_ArbiterLock();
-		
-#if JETSON_LINK_CAN
-		if(JetsonCAN_GetFrame(jetson_frame))
-#else
-		if(USART3_GetJetsonFrame(jetson_frame))
+
+#if !JETSON_LINK_CAN && JETSON_USE_BLOB_V2
+		{
+			blob_rx_frame_t blob_frame;
+
+			while(BlobRs232_GetFrame(&blob_frame))
+				BlobPack_HandleDownlink(&blob_frame);
+		}
 #endif
-		
+
+#if !JETSON_LINK_CAN && !JETSON_USE_BLOB_V2
+		if(USART3_GetJetsonFrame(jetson_frame))
 		{
 			if(Arbiter_ParseJetsonCmd(jetson_frame, JETSON_FRAME_LEN) != 0)
 				RTOS_PRINT("[JETSON CMD] parse failed\r\n");
 		}
+#elif JETSON_LINK_CAN
+		if(JetsonCAN_GetFrame(jetson_frame))
+		{
+			if(Arbiter_ParseJetsonCmd(jetson_frame, JETSON_FRAME_LEN) != 0)
+				RTOS_PRINT("[JETSON CMD] parse failed\r\n");
+		}
+#endif
 		JetsonCAN_ServiceFault(&arb_state);
+#if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
+		BlobPack_UplinkTick(&arb_state, f, b, l, r, n);
+#else
 		if(s_jetson_tx_toggle == 0)
 		{
 			USART3_SendV3StatusFrame(&arb_state, f, b, l, r);
@@ -180,7 +214,45 @@ void vJetsonTask(void *pvParameters)
 			USART3_SendV3DetailFrame(&arb_state);
 			s_jetson_tx_toggle = 0;
 		}
+#endif
 		App_ArbiterUnlock();
+
+#if !JETSON_LINK_CAN && JETSON_USE_BLOB_V2
+		if(++rx_stat_div >= 250)
+		{
+			u32 rx_b, ore, ab;
+			u32 ctrl;
+			u32 db, dab;
+			u32 mab, ma5, maa;
+			u32 tx_b, tx_f, tx_m02, tx_m03;
+			u32 dtx, dm02, dm03;
+
+			rx_stat_div = 0;
+			USART3_GetRxStats(&rx_b, &ore, &ab);
+			USART3_GetRxMagicStats(&mab, &ma5, &maa);
+			BlobRs232_GetTxStats(&tx_b, &tx_f, &tx_m02, &tx_m03);
+			ctrl = BlobPack_GetRxCtrlCount();
+			db = rx_b - rx_last_b;
+			dab = ab - rx_last_ab;
+			dtx = tx_b - tx_last_b;
+			dm02 = tx_m02 - tx_last_m02;
+			dm03 = tx_m03 - tx_last_m03;
+			rx_last_b = rx_b;
+			rx_last_ab = ab;
+			tx_last_b = tx_b;
+			tx_last_m02 = tx_m02;
+			tx_last_m03 = tx_m03;
+			printf("[JETSON RX] +5s: bytes=%lu ab_idle=%lu ore=%lu ctrl=%lu rej=%lu | magic AB/A5/AA=%lu/%lu/%lu tot=%lu\r\n",
+				(unsigned long)db, (unsigned long)dab,
+				(unsigned long)ore, (unsigned long)ctrl,
+				(unsigned long)BlobRs232_GetHdrRejectCount(),
+				(unsigned long)mab, (unsigned long)ma5, (unsigned long)maa,
+				(unsigned long)rx_b);
+			printf("[JETSON TX] +5s: bytes=%lu 0x02=%lu 0x03=%lu tot_bytes=%lu tot_frames=%lu\r\n",
+				(unsigned long)dtx, (unsigned long)dm02, (unsigned long)dm03,
+				(unsigned long)tx_b, (unsigned long)tx_f);
+		}
+#endif
 	}
 }
 
@@ -194,10 +266,46 @@ void vGpsTask(void *pvParameters)
 	{
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(GPS_TASK_CYCLE_MS));
 		GPS_Process();
+#if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
+		BlobPack_SendGps(GPS_GetData());
+#else
 		JetsonCAN_SendGps(GPS_GetData());
+#endif
 		GPS_PrintStatus();
 	}
 }
+
+#if ETH_LWIP_ENABLE
+void vNetTask(void *pvParameters)
+{
+	TickType_t xLastWakeTime = xTaskGetTickCount();
+	u16 stat_div = 0;
+
+	(void)pvParameters;
+
+	for(;;)
+	{
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(NET_TASK_CYCLE_MS));
+		App_EthPoll();
+		if(++stat_div >= 1000)
+		{
+			u32 rx;
+			u8 link;
+
+			stat_div = 0;
+			if(App_EthIsReady())
+			{
+				App_EthGetStats(&rx, &link);
+				printf("[ETH] link=%s rx=%lu tx_ok=%lu rbus=%u desc_cpu=%u (rx=0=no L2 frames)\r\n",
+					link ? "UP" : "DOWN", (unsigned long)rx,
+					(unsigned long)ETH_TxOkCount(),
+					(unsigned)ETH_DmaSrHasRbus(),
+					(unsigned)ETH_RxDescCpuCount());
+			}
+		}
+	}
+}
+#endif
 
 void vUiTask(void *pvParameters)
 {

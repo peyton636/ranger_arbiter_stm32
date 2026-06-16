@@ -13,12 +13,16 @@
 
 #if !JETSON_LINK_CAN
 void USART3_Init(void);
+void USART3_TxMutexInit(void);
 void USART3_SendByte(u8 data);
 void USART3_SendData(u8* data, u16 len);
 void USART3_SendServiceFrame(u32 can_id, const u8 *payload, u8 len);
 void USART3_ProcessRxByte(u8 byte);
 u8 USART3_GetJetsonFrame(u8* frame);
 u8 USART3_GetServiceRequest(u32 *can_id, u8 *payload);
+void USART3_GetRxStats(u32 *rx_bytes, u32 *ore_cnt, u32 *ab_idle);
+void USART3_GetRxMagicStats(u32 *raw_ab, u32 *raw_a5, u32 *raw_aa);
+void USART3_PrintHwDiag(void);
 #endif
 
 // V3 上行帧发送

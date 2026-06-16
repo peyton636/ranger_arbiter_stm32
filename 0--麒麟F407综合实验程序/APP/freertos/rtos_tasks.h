@@ -1,6 +1,7 @@
 #ifndef __RTOS_TASKS_H
 #define __RTOS_TASKS_H
 
+#include "app_boot.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -28,6 +29,10 @@
 #define GPS_TASK_PRIO             2
 #define GPS_TASK_CYCLE_MS         100
 
+#define NET_TASK_STACK_SIZE       512
+#define NET_TASK_PRIO             2
+#define NET_TASK_CYCLE_MS         5
+
 #define UI_TASK_STACK_SIZE            768
 #define UI_TASK_PRIO                  3
 #define UI_TASK_NOTIFY_TIMEOUT_MS     20
@@ -40,6 +45,9 @@ extern TaskHandle_t xKeyTaskHandle;
 extern TaskHandle_t xJetsonTaskHandle;
 extern TaskHandle_t xGpsTaskHandle;
 extern TaskHandle_t xUiTaskHandle;
+#if ETH_LWIP_ENABLE
+extern TaskHandle_t xNetTaskHandle;
+#endif
 
 void vMotionTask(void *pvParameters);
 void vCanTask(void *pvParameters);
@@ -48,5 +56,8 @@ void vKeyTask(void *pvParameters);
 void vJetsonTask(void *pvParameters);
 void vGpsTask(void *pvParameters);
 void vUiTask(void *pvParameters);
+#if ETH_LWIP_ENABLE
+void vNetTask(void *pvParameters);
+#endif
 
 #endif

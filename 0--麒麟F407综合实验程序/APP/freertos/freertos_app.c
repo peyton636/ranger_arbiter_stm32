@@ -3,6 +3,7 @@
 #include "rtos_tasks.h"
 #include "motion_ui_shared.h"
 #include "usart.h"
+#include "usart3.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stm32f4xx_usart.h"
@@ -32,6 +33,9 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 void App_SharedInit(void)
 {
 	Usart_PrintMutexInit();
+#if !JETSON_LINK_CAN
+	USART3_TxMutexInit();
+#endif
 	MotionUI_SharedInit();
 }
 
@@ -45,6 +49,9 @@ void App_TasksCreate(void)
 	CREATE_TASK(vKeyTask, "Key", KEY_TASK_STACK_SIZE, KEY_TASK_PRIO, &xKeyTaskHandle);
 	CREATE_TASK(vJetsonTask, "Jetson", JETSON_TASK_STACK_SIZE, JETSON_TASK_PRIO, &xJetsonTaskHandle);
 	CREATE_TASK(vGpsTask, "Gps", GPS_TASK_STACK_SIZE, GPS_TASK_PRIO, &xGpsTaskHandle);
+#if ETH_LWIP_ENABLE
+	CREATE_TASK(vNetTask, "Net", NET_TASK_STACK_SIZE, NET_TASK_PRIO, &xNetTaskHandle);
+#endif
 	CREATE_TASK(vUiTask, "Ui", UI_TASK_STACK_SIZE, UI_TASK_PRIO, &xUiTaskHandle);
 
 	MotionUI_SetUiTaskHandle(xUiTaskHandle);

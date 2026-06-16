@@ -48,9 +48,14 @@
 .\obj\freertos_app.o: .\Middlewares\FreeRTOS\include\list.h
 .\obj\freertos_app.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\obj\freertos_app.o: APP\freertos\rtos_tasks.h
-.\obj\freertos_app.o: APP\freertos\motion_ui_shared.h
+.\obj\freertos_app.o: APP\freertos\app_boot.h
 .\obj\freertos_app.o: .\Public\system.h
+.\obj\freertos_app.o: APP\freertos\motion_ui_shared.h
 .\obj\freertos_app.o: .\APP\distance_sensor\distance_sensor.h
 .\obj\freertos_app.o: .\Middlewares\FreeRTOS\include\semphr.h
 .\obj\freertos_app.o: .\Middlewares\FreeRTOS\include\queue.h
 .\obj\freertos_app.o: .\Public\usart.h
+.\obj\freertos_app.o: .\APP\usart3\usart3.h
+.\obj\freertos_app.o: .\APP\arbiter\arbiter.h
+.\obj\freertos_app.o: .\APP\jetson_can\jetson_can.h
+.\obj\freertos_app.o: .\APP\gps\gps.h

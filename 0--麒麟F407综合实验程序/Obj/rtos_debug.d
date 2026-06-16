@@ -48,3 +48,5 @@
 .\obj\rtos_debug.o: .\Middlewares\FreeRTOS\include\list.h
 .\obj\rtos_debug.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\obj\rtos_debug.o: APP\freertos\rtos_tasks.h
+.\obj\rtos_debug.o: APP\freertos\app_boot.h
+.\obj\rtos_debug.o: .\Public\system.h

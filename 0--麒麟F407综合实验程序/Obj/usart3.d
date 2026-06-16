@@ -42,3 +42,17 @@
 .\obj\usart3.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\obj\usart3.o: .\APP\beep\beep.h
 .\obj\usart3.o: .\APP\can\can2.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
+.\obj\usart3.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\obj\usart3.o: .\User\FreeRTOSConfig.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\projdefs.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\portable.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\deprecated_definitions.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F\portmacro.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\mpu_wrappers.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\semphr.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\queue.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\task.h
+.\obj\usart3.o: .\Middlewares\FreeRTOS\include\list.h
+.\obj\usart3.o: .\APP\agv_blob\agv_blob_wire.h
+.\obj\usart3.o: .\APP\agv_blob\agv_blob_rs232.h
