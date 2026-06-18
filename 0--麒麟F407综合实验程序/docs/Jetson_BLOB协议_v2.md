@@ -2,8 +2,8 @@
 
 | 元数据 | 值 |
 |--------|-----|
-| **协议版本** | **v2.0-draft.5.7** |
-| **文档日期** | 2026-06-16 |
+| **协议版本** | **v2.0-draft.5.11** |
+| **文档日期** | 2026-06-17 |
 | **物理层** | RS232 115200 8N1（USART2）或 CAN2 500 kbps（编译期二选一） |
 | **编码** | 多字节整数 **大端 BE**；`#pragma pack(1)` |
 
@@ -507,6 +507,9 @@ byte 40 = `jetson_seq`：应等于 Jetson 最近下发的 **0x01 头里 SEQ**。
 | MCU 有 `[JETSON CMD]` 但不动 | `control_mode=0x00` 待机；需 **0x01** |
 | **BLOB 模式无 `[JETSON CMD]`** | **正常**：V3 才打 `[JETSON CMD]`；BLOB 应看 **`[JETSON BLOB CMD]`** |
 | **0xA5 TimeSync 通但 DEGRADED** | **0xA5 ≠ 0x01 心跳**；TimeSync 通只说明服务层双向 OK |
+| **F407 NORMAL 但 topic 空 / 上行超时** | Jetson **gateway 未解析 MCU BLOB 上行**（混流/看门狗仍认 V3），见 **§C.9.10** |
+| **`link_test --listen-only` 能收 0x02/0x03，launch 不能** | **混流 + gateway 解析**；MCU 上行正常，见 **§C.9.10** |
+| **`magic AB>0` 且 `ab_idle=0`、`ctrl=0`** | MCU **BLOB 收包未编译**（include 顺序）或失步，见 **§C.9.3、§C.9.9** |
 | `[JETSON RX] bytes=0` | PA3 未收到任何字节（下行物理断/未发/错 port） |
 | `[JETSON RX] bytes>0 ab=0` | 有字节但未在 IDLE 同步 **0xAB**（V3 误同步或失步，见 **§C.9.4**） |
 | `[JETSON RX] hdr_rej>0` | 线头字段与 MCU 校验不一致 |
@@ -517,17 +520,22 @@ byte 40 = `jetson_seq`：应等于 Jetson 最近下发的 **0x01 头里 SEQ**。
 
 本节记录 **2026-06 F407 ↔ Jetson（`rs232_gateway` / `link_test`）** 联调 BLOB v2 时遇到的典型问题、日志特征与已落地修复。以太网 ping 问题见 [以太网与WiFi接入方案.md](./以太网与WiFi接入方案.md) §13（RS232 阶段与以太网 **独立**）。
 
-#### C.9.1 三层诊断模型（先分层再定责）
+#### C.9.1 四层诊断模型（先分层再定责）
 
-联调时不要把「串口通」「TimeSync 通」「仲裁 NORMAL」混为一谈：
+联调时不要把「串口通」「TimeSync 通」「仲裁 NORMAL」「Jetson topic 有数据」混为一谈：
 
 | 层级 | 判据 | 通过标志 | 失败时含义 |
 |:--:|------|----------|------------|
 | **L1 物理 RX** | MCU `[JETSON RX] bytes` 递增 | `bytes>0` | Jetson→PA3 无字节 |
 | **L2 服务 0xA5** | gateway `TimeSync PING rtt=…ms` | RTT 稳定 | 仅说明 0xA5 双向 OK |
-| **L3 BLOB 0x01 心跳** | `[JETSON BLOB RX/CMD]`、`ARB=NORMAL` | `safety_state→1` | **控制心跳未进仲裁** |
+| **L3 BLOB 0x01 心跳（下行）** | `[JETSON BLOB RX/CMD]`、`ARB=NORMAL` | F407 `ARB=NORMAL` | **控制心跳未进 MCU 仲裁** |
+| **L4 BLOB 上行（MCU→Jetson）** | `link_test --listen-only` 或 `/jetson_rs232/v3_status` | topic 有数据、`safety_state→1` | **gateway 未解析 0x02/0x03** |
 
-**经验**：L2 通、L3 不通 最常见——**不是线没接好**，而是 **0x01 未 parse 或未当心跳**。
+**经验**：
+
+- **L2 通、L3 不通** → 多为 MCU 收不到/未 parse 0x01（见 §C.9.3、§C.9.9）。
+- **L3 通、L4 不通** → **MCU 上行往往正常**，问题在 **Jetson gateway 混流解析**（见 §C.9.10）。
+- **0xA5 能通不能反推 BLOB 上行通**：0xA5 帧短（11B）、频率低，混流下比 0x02/0x03（49B/51B）更容易「偶发成功」。
 
 #### C.9.2 问题 1：上行通、下行 `bytes=0`
 
@@ -589,18 +597,83 @@ byte 40 = `jetson_seq`：应等于 Jetson 最近下发的 **0x01 头里 SEQ**。
 | **根因** | 旧版 `tools/jetson_rs232_link_test.py` 默认发 **V3 0xAA 24B**；MCU BLOB 固件不认 V3 心跳（新固件 IDLE 已忽略 0xAA） |
 | **解决** | BLOB 联调必须 **`--blob-v2`**；或 ROS **`use_blob_v2:=true`**（gateway 默认已是 true） |
 
-#### C.9.9 MCU 固件修复清单（2026-06-16）
+#### C.9.9 问题 8：`magic AB>0` 但 `ab_idle=0`、`ctrl=0`（BLOB 收包路径未编译）
+
+| 项目 | 内容 |
+|------|------|
+| **现象** | `[JETSON RX] bytes>0`；`magic AB` 递增；**`ab_idle=0`、`ctrl=0`、`rej=0`**；无 `[JETSON BLOB RX]`；Keil map 出现 **`Removing … BlobRs232_RxFeed`** |
+| **根因** | `APP/usart3/usart3.c` 在 **`#if JETSON_USE_BLOB_V2` 内** 才 `#include "agv_blob_wire.h"`，而该头文件才定义 `JETSON_USE_BLOB_V2=1`。编译 `usart3.c` 时宏未定义 → 按 C 规则为 **0** → **整段 BLOB IDLE/收包被裁掉**；`rtos_tasks.c` 因先 include  wire 头，任务层 BLOB **仍链接**，形成「分裂固件」 |
+| **日志特征** | `raw_ab` 涨（每字节统计仍在）；`ab_idle` 永不涨；TimeSync **仍可通**（0xA5 在 `#else` 分支） |
+| **解决（MCU，已合入）** | 在 `usart3.c` **任何 `#if JETSON_USE_BLOB_V2` 之前** 先 `#include "agv_blob_wire.h"`；Rebuild 后 map **应保留** `BlobRs232_RxFeed` |
+| **通过标志** | `[JETSON BLOB RX] first 0x01` → `[JETSON BLOB CMD]` → `ARB=NORMAL`；`ctrl` 递增 |
+
+#### C.9.10 问题 9：F407 已 NORMAL，Jetson topic 空 +「上行超时」
+
+| 项目 | 内容 |
+|------|------|
+| **现象** | F407：`[JETSON BLOB CMD]`、`ARB=NORMAL`；Jetson：`[rs232_gateway]: 上行超时 (>300ms 无有效 BLOB)`；`ros2 topic hz /jetson_rs232/v3_status` **无输出**；TimeSync PING 可能有 RTT |
+| **根因（主，2026-06 联调定责）** | **`rs232_gateway` RX 在混流下未持续解析 MCU BLOB 上行（0x02/0x03）**：launch 同时 **50Hz 下行 0x01 + TimeSync 0xA5 + MCU 上行 BLOB**；旧解析器或看门狗仍按 **V3(0xAA)** 逻辑，或 BLOB 状态机 **失步后长时间解不出上行帧** |
+| **定责证据** | `python3 tools/jetson_rs232_link_test.py --listen-only --blob-v2` **能收 0x02/0x03**（MCU PA2 发合法 BLOB）；**仅 launch 全功能失败** → MCU 侧无须再改，**责任在 gateway** |
+| **次要因素** | USB-TTL 大流量半双工；gateway **TX/RX 同线程** write 阻塞 read；115200 上多源字节交织（MCU 已加 TX 互斥，见 §C.9.11） |
+| **临时绕过（Jetson，验证用）** | `time_sync_enable:=false` 或 `tx_rate_hz:=10` 后再 launch；若 topic 恢复 → 确认混流/带宽 |
+| **根治（Jetson gateway，待合入）** | 见 **§C.9.10.1** |
+
+##### C.9.10.1 Jetson `rs232_gateway` 修改清单
+
+| # | 项 | 说明 |
+|:-:|------|------|
+| 1 | **RX 三路状态机** | IDLE 优先级 **`0xAB` → `0xA5`**（与 MCU 对称）；**勿**在 BLOB 模式 IDLE 收 `0xAA` |
+| 2 | **BLOB 失步恢复** | COLLECT 阶段遇 **`0xAB` 且 idx>0** 强制 resync（对齐 MCU `BlobRs232_RxFeed`） |
+| 3 | **上行看门狗** | 「300ms 无有效 BLOB」须在 **MSG 0x02/0x03/0x04** 解析成功时刷新；**不能**只认 V3 `0xAA` 上行 |
+| 4 | **发布 v3_status** | 从 **BLOB 0x03 `mcu_status_t`** 填 `safety_state` / `jetson_seq`；解析成功即 `_pub_status.publish()` |
+| 5 | **RS232 线头校验** | `FRAG_IDX=0`、`FRAG_CNT=1`、`FLAGS=0`、`VER=0x01`；**勿**用 CAN 分片 `FRAG_CNT=ceil(...)` 验 RS232 |
+| 6 | **TX/RX 分离** | RX **独立线程**持续 read；TX 只 write；串口 **单写者** |
+| 7 | **参考实现** | 本仓库 `tools/jetson_rs232_link_test.py` → `StreamStats._scan()`（最小可工作的 BLOB 扫描） |
+| 8 | **调试计数** | 建议打印 `blob_rx_02/03`、`svc_rx`、`hdr_reject`，与 F407 `[JETSON RX/TX]` 对照 |
+
+**隔离测试（定责用，必须先停 gateway）**：
+
+```bash
+pkill -f rs232_gateway; pkill -f agv_base_driver; sleep 1
+python3 tools/jetson_rs232_link_test.py --port "$SERIAL" --listen-only --blob-v2 --time 10
+```
+
+| listen-only 结果 | 结论 |
+|------------------|------|
+| **BLOB uplink > 0** | PA2→Jetson OK；修 **gateway 混流解析** |
+| **total_rx>0 但 uplink=0** | 字节有但非合法 BLOB（罕见，查线头/插字节） |
+| **total_rx=0** | PA2 物理或 MCU 未运行 |
+
+**`ros2 topic` 无输出的常见原因**：
+
+| 原因 | 现象 |
+|------|------|
+| gateway 未跑 / 已 Ctrl+C | topic 不存在或 `does not appear to be published yet` |
+| gateway 在跑但从未 parse 上行 | 持续「上行超时」，topic 永远空 |
+| 测 topic 时 F407 尚未 NORMAL | launch 后约 10s 内空属正常；**NORMAL 后仍空** → §C.9.10 |
+
+#### C.9.11 MCU 固件修复清单（2026-06-16 ~ 2026-06-17）
 
 | 文件 | 改动 | 针对问题 |
 |------|------|----------|
+| `APP/usart3/usart3.c` | **`#include "agv_blob_wire.h"` 置于 `#if JETSON_USE_BLOB_V2` 之前** | §C.9.9 |
 | `APP/usart3/usart3.c` | ORE 仍喂解析；IDLE **0xAB→0xA5**，BLOB 模式 **忽略 0xAA**；magic 统计 | §C.9.5、§C.9.3 |
-| `APP/agv_blob/agv_blob_rs232.c` | 收包超长 `BLOB_MAX_WIRE` 强制 reset；`hdr reject` 日志 | 失步恢复 |
-| `APP/agv_blob/agv_blob_pack.c` | 心跳丢失时减上行；`[JETSON BLOB RX/CMD]` 日志 | 带宽、可观测性 |
-| `APP/freertos/rtos_tasks.c` | BLOB 模式关闭 V3 下行解析；`[JETSON RX]` 周期统计 | §C.9.3 |
+| `APP/usart3/usart3.c` | **`USART3_TxMutexInit` + SendData 互斥**（Jetson/GPS/TimeSync 共 TX） | §C.9.10 次要、防插字节 |
+| `APP/usart3/usart3.c` | **`JETSON_USART2_DMA_TX=1` + `JETSON_USART2_DMA_RX=0`**：DMA 非阻塞 TX，**字节中断 RX**（DMA+IDLE RX 曾致 `ore` 风暴且 `dn=0`） | §C.9.15、§C.9.16 |
+| `APP/agv_blob/agv_blob_wire.h` | 宏 **`BLOB_UPLINK_MINIMAL`**、`JETSON_USART2_DMA_TX/RX` 开关 | §C.9.15 |
+| `APP/agv_blob/agv_blob_rs232.c` | COLLECT 遇 **0xAB resync**；超长 `BLOB_MAX_WIRE` reset；`hdr reject` 日志；**TX 统计** | 失步、可观测性 |
+| `APP/agv_blob/agv_blob_pack.c` | NORMAL：**每 tick 0x02+0x03**，其它帧错峰；DEGRADED：仍发 0x02、隔 tick 0x03 | gateway 300ms 看门狗 |
+| `APP/agv_blob/agv_blob_pack.c` | `[JETSON BLOB RX/CMD]` 日志 | 可观测性 |
+| `APP/freertos/rtos_tasks.c` | 调试 log 由 **`vGpsTask` 打印**（printf 阻塞不影响 BLOB 任务） | §C.9.16.2 |
+| `APP/agv_blob/agv_blob_pack.c` | `BlobPack_FlushDebugLog()`；下行路径 **无 printf** | 同上 |
+| `APP/freertos/rtos_tasks.h` | **`JETSON_TASK_STACK_SIZE` 768**；`MOTION_TASK_STACK_SIZE` 512 | 栈溢出 |
+| `APP/freertos/freertos_app.c` | `App_SharedInit` 调 `USART3_TxMutexInit` | TX 互斥 |
 | `APP/freertos/app_boot.h` | `ETH_LWIP_ENABLE=0` | §C.9.5 |
-| `tools/jetson_rs232_link_test.py` | 增加 **`--blob-v2`** | §C.9.8 |
+| `tools/jetson_rs232_link_test.py` | **`--blob-v2`** | §C.9.8 |
 
-#### C.9.10 F407 调试口日志对照
+> **MCU 阶段收口**：L3（下行 0x01 → `ARB=NORMAL`）已通过后，**不必再改 MCU**；L4 失败按 §C.9.10 修 Jetson gateway。
+
+#### C.9.12 F407 调试口日志对照
 
 | 日志 | 含义 |
 |------|------|
@@ -610,18 +683,33 @@ byte 40 = `jetson_seq`：应等于 Jetson 最近下发的 **0x01 头里 SEQ**。
 | `[Arbiter] DEGRADED -> NORMAL` | 心跳恢复 |
 | `[BLOB RX] hdr reject …` | 线头校验失败（贴整行给 Jetson 对 hex） |
 | `[JETSON CMD] parse failed` | V3 误同步或 Jetson 发 0xAA（BLOB 模式应减少） |
-| `[JETSON RX] +5s: bytes=… ab_idle=… \| magic AB/A5/AA=…` | 5 s 窗口 RX 诊断 |
+| `[JETSON LINK] +5s: dn=… ab=… ctrl=… \| up=… 0x02=… 0x03=… ARB=… HB=…` | **L3/L4 一行摘要**（需 `RTOS_VERBOSE_JETSON_LINK=1`） |
+| `[JETSON RX/TX] +5s`（旧） | 已合并为 **`[JETSON LINK]`** |
 
-**`[JETSON RX]` 字段解读**：
+**`[JETSON LINK]` 字段（L3 看下行，L4 看上行）**：
 
-| 字段 | 正常（BLOB launch） | 异常 |
-|------|---------------------|------|
-| `bytes` | 数百~数千 / 5s | `0` → L1 断 |
-| `ab_idle` | 与 0x01 帧率同量级 | `0` 且 `magic AB>0` → 失步 |
+| 字段 | L3 正常 | 异常 |
+|------|---------|------|
+| `ab` | 与 0x01 帧率同量级 | `0` 且 `ctrl=0` → 未收 BLOB 0x01 |
 | `ctrl` | 递增 | `0` → 未进 `BlobPack_HandleDownlink` |
-| `magic AB/A5/AA` | AB 高、A5 低、AA≈0 | AA 高 → Jetson 发 V3 或误同步 |
+| `ARB` / `HB` | `NORMAL` / `OK` | `DEGRADED` / `LOST` → 心跳超时（**非测距**） |
+| `0x02` / `0x03` | 数百/5s | `0` → MCU 未发上行（L4）；有值但 Jetson topic 空 → **gateway §C.9.10** |
 
-#### C.9.11 Jetson 侧命令速查
+**调试口 verbosity（`APP/freertos/rtos_config.h`，默认 Jetson 联调）**：
+
+| 宏 | 默认 | 控制 |
+|----|:--:|------|
+| `RTOS_VERBOSE_JETSON_LINK` | 1 | `[JETSON LINK] +5s` |
+| `RTOS_VERBOSE_CHASSIS_LOG` | 0 | `[WHEEL][CMDOUT][MOTION][PWR][SAFE]` |
+| `RTOS_VERBOSE_SENSOR_LOG` | 0 | `[DS] IF1~4` |
+| `RTOS_VERBOSE_GPS_LOG` | 0 | `[GPS]` 周期 |
+| `RTOS_VERBOSE_STACK_LOG` | 0 | `[RTOS] stack free` |
+
+**保留（不受上述宏关闭）**：`[JETSON BLOB RX] first 0x01`、`[JETSON BLOB CMD]`（约 1s 一条）、`[Arbiter] Heartbeat lost`、`[Arbiter] Mode switch`、`[BLOB RX] hdr reject`。
+
+**DEGRADED（safety=0x03）与测距**：仲裁 **DEGRADED** 主因是 **300ms 未收到 0x01 新 seq**（`[Arbiter] Heartbeat lost`）。测距过近通常进 **SPEED_LIMIT（0x02）** 或 **EMERGENCY（0x04）**，不是 DEGRADED。当前默认 **`ARBITER_IGNORE_DIST_SENSOR=1`** 时测距不参与避障。TimeSync（0xA5）**不计心跳**。
+
+#### C.9.13 Jetson 侧命令速查
 
 ```bash
 # 环境
@@ -632,12 +720,21 @@ export SERIAL=/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controll
 # 清串口
 pkill -f rs232_gateway; pkill -f agv_base_driver; pkill -f jetson_bridge; sleep 0.5
 
-# 专测 BLOB 心跳（推荐先跑）
+# 【定责】仅听 MCU 上行（必须先停 gateway）
+python3 tools/jetson_rs232_link_test.py --port "$SERIAL" --listen-only --blob-v2 --time 10
+
+# 专测 BLOB 心跳（双向，无 TimeSync 混流）
 python3 tools/jetson_rs232_link_test.py --port "$SERIAL" --blob-v2 --time 10
 
 # 完整 ROS
 ros2 launch agv_base_driver jetson_rs232_bringup.launch.py serial_port:="$SERIAL"
+
+# 减轻混流（gateway 未修前临时验证）
+ros2 launch agv_base_driver jetson_rs232_bringup.launch.py \
+  serial_port:="$SERIAL" time_sync_enable:=false tx_rate_hz:=10
+
 ros2 param get /rs232_gateway use_blob_v2    # 期望 True
+ros2 topic hz /jetson_rs232/v3_status        # 期望 ~20–50 Hz（gateway 修好后）
 ros2 topic echo /jetson_rs232/v3_status --field safety_state   # 期望 3→1
 ```
 
@@ -648,12 +745,403 @@ ab 01 01 SEQ 00 0e 00 01 00  + 14B agv_control_t
 示例：ab010101000e00010001954e5400000000000001000000
 ```
 
-#### C.9.12 联调通过标准
+#### C.9.14 联调通过标准
+
+**阶段 A — MCU 下行（L3）**
 
 - [ ] F407：`[JETSON BLOB RX] first 0x01` → `[JETSON BLOB CMD]` → `ARB=NORMAL`
-- [ ] Jetson：`safety_state` **3（DEGRADED）→ 1（NORMAL）**；`link_state` **1→0**
 - [ ] 停发 0x01 **>300 ms** 后回 DEGRADED（心跳超时验证）
-- [ ] 0xA5 TimeSync 仍可 PING（与心跳独立）
+
+**阶段 B — MCU 上行（L4，依赖 gateway 修复）**
+
+- [ ] `link_test --listen-only --blob-v2`：`BLOB uplink > 0`（0x02/0x03）
+- [ ] F407：`[JETSON TX] +5s` 中 `0x02`、`0x03` 持续递增
+- [ ] Jetson：`ros2 topic hz /jetson_rs232/v3_status` 有稳定频率
+- [ ] Jetson：`safety_state` **3（DEGRADED）→ 1（NORMAL）**；无持续「上行超时」
+- [ ] 0xA5 TimeSync 仍可 PING（与心跳、上行独立）
+
+**阶段 C — 压力**
+
+- [ ] launch 默认参数（50Hz + TimeSync）连续 10 min 稳定
+
+#### C.9.15 MCU RS232 BLOB 收发数据流与代码路径
+
+本节描述 **F407 固件**在 `JETSON_LINK_CAN=0`、`JETSON_USE_BLOB_V2=1` 条件下，Jetson 与 MCU 之间 BLOB v2 的 **完整数据流**与 **函数调用链**，便于与 Jetson `rs232_gateway` / `link_test` 对照定责。
+
+##### C.9.15.1 两条物理串口（极易混淆）
+
+| 串口 | MCU 引脚 | 连接 | 用途 | 典型 log |
+|------|----------|------|------|----------|
+| **USART1** | PA9=TX / PA10=RX | 板载 USB 转串口（CH340 等） | **`printf` 调试** | `LCD ID`、`[JETSON LINK]` |
+| **USART2** | **PA2=TX / PA3=RX** | Jetson USB-TTL（Prolific 等） | **BLOB v2 业务** | 无直接 log；见 `[JETSON LINK]` 统计 |
+
+> **教训**：调试口 **无新 print** ≠ PA2 **未发数据**；**`[JETSON LINK] up=`** 统计的是软件发送队列，**不能单独证明 PA2 引脚有波形**（需 Jetson `listen-only` 或示波器交叉验证）。
+
+**与以太网冲突**：`ETH_LWIP_ENABLE=1` 时 **PA2 被 ETH_MDIO 占用**，USART2 TX 失效。联调 RS232 必须 **`ETH_LWIP_ENABLE=0`**（见 `APP/freertos/app_boot.c` 启动提示）。
+
+##### C.9.15.2 相关源文件与编译宏
+
+| 文件 | 职责 |
+|------|------|
+| `APP/agv_blob/agv_blob_wire.h` | BLOB 线格式常量、`JETSON_USE_BLOB_V2`、`BLOB_UPLINK_MINIMAL`、`JETSON_USART2_DMA_TX/RX` |
+| `APP/agv_blob/agv_blob_rs232.c` | BLOB **线格式组帧/解帧**状态机、`BlobRs232_Send/RxFeed`、TX/RX 统计 |
+| `APP/agv_blob/agv_blob_pack.c` | struct **打包/解包**、下行 0x01 进仲裁、上行 `BlobPack_UplinkTick` |
+| `APP/usart3/usart3.c` | **USART2 硬件层**：字节/ DMA TX、RX 中断、0xAB/0xA5/0xAA 分流 |
+| `APP/freertos/rtos_tasks.c` | **`vJetsonTask`**（20 ms）：收 BLOB 下行、调 `BlobPack_UplinkTick`、打 `[JETSON LINK]` |
+| `APP/freertos/rtos_tasks.c` | **`vGpsTask`**：周期 `BlobPack_SendGps`（0x05，亦走 PA2） |
+| `APP/arbiter/arbiter.c` | 心跳超时、`DEGRADED↔NORMAL` 状态机 |
+| `APP/freertos/motion_control.c` | **`MotionControl_Run`**：KEY0 强制停车时 **跳过 `Arbiter_Process()`** |
+| `APP/freertos/app_boot.c` | `App_MotionHwInit()` → `USART3_Init()` |
+| `APP/freertos/freertos_app.c` | `USART3_TxMutexInit()`；创建 `vJetsonTask` |
+| `Public/usart.c` | **`fputc` → USART1**，所有 `printf` 走调试口 |
+
+| 宏 | 默认 | 含义 |
+|----|:--:|------|
+| `JETSON_USE_BLOB_V2` | 1 | 启用 0xAB BLOB（关则走 V3 0xAA） |
+| `BLOB_UPLINK_MINIMAL` | 1 | 联调档：必保 **0x02+0x03@50Hz**，其余 MSG 降频 |
+| `JETSON_USART2_DMA_TX` | 1 | USART2 **DMA 非阻塞发送** |
+| `JETSON_USART2_DMA_RX` | 0 | **关** DMA+IDLE RX；用 **RXNE 字节中断**（曾开导致 `ore↑` 且 `dn=0`） |
+| `RTOS_VERBOSE_JETSON_LINK` | 1 | 每 5 s 打印 `[JETSON LINK]` |
+
+##### C.9.15.3 初始化与任务调度
+
+```text
+main()
+  └─ App_MotionHwInit()                    [app_boot.c]
+       ├─ USART3_Init()                    [usart3.c]  USART2 115200, PA2/PA3
+       │    ├─ JETSON_USART2_DMA_TX=1 → USART3_DmaInit()
+       │    │     ├─ DMA1_Stream6 TX + DMA1_Stream6_IRQHandler
+       │    │     └─ JETSON_USART2_DMA_RX=0 → USART_IT_RXNE 使能
+       │    └─ NVIC: USART2_IRQn
+       ├─ Arbiter_Init() / Arbiter_EnableCANMode()
+       └─ printf 启动 profile（MINIMAL / DMA TX / byte-ISR RX）
+
+FreeRTOS 启动 [freertos_app.c]
+  ├─ USART3_TxMutexInit()
+  ├─ xTaskCreate(vJetsonTask, 周期 20 ms)
+  └─ xTaskCreate(vGpsTask, GPS 周期)
+```
+
+##### C.9.15.4 下行（Jetson → MCU，MSG 0x01）数据流
+
+**物理路径**：Jetson USB-TTL **TX** → F407 **PA3 (USART2_RX)** → 115200 8N1
+
+```mermaid
+flowchart TD
+  A[Jetson 写串口 0xAB 0x01 ... 23B] --> B[PA3 USART2_RX]
+  B --> C{USART2_IRQHandler}
+  C -->|RXNE 读 DR| D[USART3_ProcessRxByte]
+  D -->|IDLE 见 0xAB| E[usart3_rx_mode=BLOB]
+  E --> F[BlobRs232_RxFeed 状态机]
+  F -->|收齐 9B头+14B payload| G[s_rx_ready=1]
+  G --> H[vJetsonTask 20ms 循环]
+  H --> I[BlobRs232_GetFrame]
+  I --> J[BlobPack_HandleDownlink]
+  J -->|MSG 0x01| K[BlobPack_ApplyControlPayload]
+  K --> L[Arbiter_UpdateHeartbeat]
+  K --> M[Arbiter_SetMode CAN_CTRL 等]
+  H --> N[MotionControl_Run 其它任务]
+  N --> O[Arbiter_Process 状态机]
+  O --> P[NORMAL / DEGRADED / RECOVERING ...]
+```
+
+**函数跳转链（按调用顺序）**：
+
+| 层级 | 函数 | 文件 | 说明 |
+|:--:|------|------|------|
+| HW | `USART2_IRQHandler` | `usart3.c` | `RXNE` 读 `USART2->DR`；`ORE` 计 `s_usart2_ore_cnt` |
+| HW | `USART3_ProcessRxByte(byte)` | `usart3.c` | IDLE：`0xAB→BLOB`；`0xA5→SVC`；**忽略 0xAA** |
+| 解帧 | `BlobRs232_RxFeed(byte)` | `agv_blob_rs232.c` | COLLECT_HDR → COLLECT_PAYLOAD；失步遇 `0xAB` resync |
+| 任务 | `vJetsonTask` | `rtos_tasks.c` | 每 20 ms：`while(BlobRs232_GetFrame)` |
+| 应用 | `BlobPack_HandleDownlink` | `agv_blob_pack.c` | `case BLOB_MSG_CONTROL(0x01)` |
+| 应用 | `BlobPack_ApplyControlPayload` | `agv_blob_pack.c` | 填 `arb_state.jetson_cmd`；新 seq → `Arbiter_UpdateHeartbeat()` |
+| 仲裁 | `Arbiter_Process` | `arbiter.c` | `Arbiter_CheckHeartbeat`；按 `current_mode` 分支 |
+| 日志 | `printf` | — | 首帧：`[JETSON BLOB RX] first 0x01`；约 1 s：`[JETSON BLOB CMD]` |
+
+**下行统计量（`[JETSON LINK]`）**：
+
+| 变量 | 更新位置 | 含义 |
+|------|----------|------|
+| `s_usart2_rx_bytes` | `USART2_IRQHandler` 每字节 | PA3 **原始收字节**（`dn` 增量） |
+| `s_usart2_ab_idle` | `ProcessRxByte` IDLE 见 `0xAB` | IDLE 态扫到的 `0xAB` 次数（`ab` 增量） |
+| `s_blob_rx_ctrl` | `BlobPack_HandleDownlink` 0x01 | 成功进入控制解析次数（**累计值**，非 5 s 增量） |
+
+##### C.9.15.5 上行（MCU → Jetson，MSG 0x02/0x03/…）数据流
+
+**物理路径**：F407 **PA2 (USART2_TX)** → Jetson USB-TTL **RX** → 115200 8N1
+
+```mermaid
+flowchart TD
+  A[vJetsonTask 每 20ms] --> B[BlobPack_UplinkTick]
+  B --> C{heartbeat_lost?}
+  C -->|是| D[仅 0x02 + 隔 tick 0x03]
+  C -->|否 MINIMAL| E[每 tick 0x02+0x03 + 降频 0x04/06/07/08/0B]
+  E --> F[BlobPack_SendMotion / SendMcuStatus / ...]
+  F --> G[BlobRs232_Send 组 9B头+payload]
+  G --> H[USART3_SendData]
+  H --> I{JETSON_USART2_DMA_TX?}
+  I -->|是| J[USART3_TxDmaKick → DMA1_Stream6 → PA2]
+  I -->|否| K[轮询 TXE 阻塞 SendByte]
+  L[vGpsTask] --> M[BlobPack_SendGps 0x05]
+  M --> G
+  J --> N[Jetson read / gateway RX 线程]
+```
+
+**函数跳转链（主路径 0x02/0x03）**：
+
+| 层级 | 函数 | 文件 | 说明 |
+|:--:|------|------|------|
+| 任务 | `vJetsonTask` | `rtos_tasks.c` | `BlobPack_UplinkTick(&arb_state, …)` |
+| 打包 | `BlobPack_SendMotion` | `agv_blob_pack.c` | 填 `agv_motion_t` 40 B → `BlobRs232_Send(0x02,…)` |
+| 打包 | `BlobPack_SendMcuStatus` | `agv_blob_pack.c` | 填 `mcu_status_t` 42 B → `BlobRs232_Send(0x03,…)` |
+| 线格式 | `BlobRs232_Send` | `agv_blob_rs232.c` | 组 `[0xAB…][payload]`；`s_tx_bytes+=wire_len` |
+| HW | `USART3_SendData` | `usart3.c` | TX 互斥；DMA 或阻塞 TXE |
+| HW | `DMA1_Stream6_IRQHandler` | `usart3.c` | DMA TX 完成；pending 帧 **最新覆盖** |
+| 统计 | `[JETSON LINK]` | `rtos_tasks.c` | 每 250 tick(5 s)：`up`/`0x02`/`0x03` **增量** |
+
+**上行带宽（`BLOB_UPLINK_MINIMAL=1`，NORMAL）**：
+
+| MSG | 线长 | 周期 | 约带宽 |
+|:---:|:--:|:--:|:--:|
+| 0x02 | 49 B | 20 ms | ~2.45 KB/s |
+| 0x03 | 51 B | 20 ms | ~2.55 KB/s |
+| 其它 | — | 降频 | ~0.5 KB/s |
+| **合计** | — | — | **~5.5 KB/s**（115200 上限 ~11.5 KB/s） |
+
+> **注意**：`s_tx_bytes` 在 `BlobRs232_Send()` 内 **调用 `USART3_SendData` 后立即累加**，表示「已提交 USART/DMA」，非「Jetson 已 ACK」。
+
+##### C.9.15.6 0xA5 服务帧（混流，非 BLOB）
+
+| 方向 | 路径 |
+|------|------|
+| **收** | `ProcessRxByte` IDLE 见 `0xA5` → `USART3_RX_MODE_SVC` → 11 B 收齐 → `USART3_GetServiceRequest` → `JetsonCAN_HandleServiceRequest`（时间同步等） |
+| **发** | `USART3_SendServiceFrame` → `USART3_SendData`（与 BLOB 共用 PA2，**TX 互斥**） |
+
+TimeSync **不计** BLOB 心跳（`Arbiter_UpdateHeartbeat` 仅 0x01 新 seq 触发）。
+
+##### C.9.15.7 仲裁与 `[JETSON LINK]` 中 ARB/HB
+
+```text
+BlobPack_ApplyControlPayload
+  └─ Arbiter_UpdateHeartbeat()     last_heartbeat_tick=now; heartbeat_lost=0
+
+MotionControl_Run (每周期)
+  └─ if g_force_stop_enable → 强制 EMERGENCY 输出，return（不调用 Arbiter_Process）
+  └─ else Arbiter_Process()
+       ├─ Arbiter_CheckHeartbeat()   >300ms 无新 seq → heartbeat_lost=1
+       └─ switch(current_mode)
+            NORMAL      → 透传 jetson_cmd
+            DEGRADED    → 心跳恢复 → RECOVERING
+            RECOVERING  → 稳定 1000ms → NORMAL
+```
+
+| 日志 | 条件 |
+|------|------|
+| `[Arbiter] Heartbeat lost! (300 ms)` | 300 ms 未收到 0x01 **新 seq** |
+| `DEGRADED → RECOVERING → NORMAL` | 恢复发 0x01 且 **未按 KEY0 强制停车** |
+| `[CTRL] FORCE STOP ON (KEY0)` | `g_force_stop_enable=1`，**Arbiter_Process 被跳过**，`ARB` 可能长期显示 DEGRADED |
+
+---
+
+#### C.9.16 联调现象对照（2026-06 实录）
+
+本节汇总 **RS232 BLOB v2 联调**中易误判的现象、涉及代码与定责方法。
+
+##### C.9.16.1 已修复的 MCU 软件问题
+
+| # | 现象 | 根因 | 涉及代码 | 修复 |
+|:-:|------|------|----------|------|
+| 1 | `magic AB>0` 但 `ctrl=0`、无 `[JETSON BLOB RX]` | `usart3.c` 在 `#if JETSON_USE_BLOB_V2` **内**才 `#include "agv_blob_wire.h"`，编译裁掉 BLOB 路径 | `APP/usart3/usart3.c` 头文件顺序 | **`agv_blob_wire.h` 提前到 `#if` 之前** |
+| 2 | `ore` 持续涨、`dn=0`，但 Jetson 偶能收上行 | `JETSON_USART2_DMA_RX=1`：关 RXNE 后 IDLE/DMA 收包异常 | `usart3.c` `USART3_DmaInit` / `USART2_IRQHandler` | **`JETSON_USART2_DMA_RX=0`**，保留 DMA TX |
+| 3 | 混流插字节 / TX 互相打断 | GPS、TimeSync、BLOB 共 PA2 | `USART3_SendData` | **TX 互斥** + DMA pending 覆盖 |
+
+##### C.9.16.2 常见 log 现象（非必为硬件故障）
+
+| 现象 | 可能原因 | 如何验证 | 相关代码/命令 |
+|------|----------|----------|---------------|
+| **`[JETSON LINK]` 完全不变** | ① 调试 USB 终端未重连 ② MCU hang ③ 看的是旧 scrollback | 重开 COM + reset，应每 **5 s** 有新 `[JETSON LINK]` | USART1 `fputc` |
+| **Jetson `listen-only` 时 MCU 无新 `[JETSON BLOB CMD]`** | **正常**：listen-only **不发 0x01** | 仍应有 `[JETSON LINK]`；`dn→0`，`HB→LOST` | — |
+| **MCU `up=31KB/5s` 但 Jetson `bytes=0`** | ① Jetson 串口被 gateway **占用** ② PA2→Jetson RX 路径 ③ MCU 已 hang（LINK 也不更新） | **pkill gateway** 后 listen-only；**同期**看 F407 LINK 是否仍在刷 | §C.9.10 隔离测试 |
+| **gateway 一阵 `blob02>0` 一阵 `bytes=0`** | gateway RX 线程 / DTR+flush / 混流；**或** MCU 重启 | F407 同期 `[JETSON LINK] up=`；MCU reboot 则 Jetson 必然全 0 | Jetson §C.9.10.1 |
+| **`ARB=DEGRADED` 但 `HB=OK`** | KEY0 **强制停车** 冻结 `Arbiter_Process` | 再按 KEY0 释放；或 log 无 `[CTRL] FORCE STOP ON` | `motion_control.c` |
+| **`[BLOB RX] hdr reject #1 id=00 len=0`** | 上电瞬间脏字节 | 仅 1 次可忽略 | `BlobRs232_RxFeed` |
+| **printf 字符交错** | 多任务并发 `printf` 无锁 | 不影响 USART2 协议 | USART1 |
+| **log 截断在 `[JETSO...` 或仅 1 行 LINK 后停** | **`vJetsonTask` 内 printf 栈溢出/阻塞**（持锁时尤甚） | 烧录 **延后 log 版**；重开 USB COM；listen-only 看 0x02 | `BlobPack_FlushDebugLog` / `JetsonLink_FlushLog` |
+
+##### C.9.16.3 四层定责 + 同期对照表
+
+| 层级 | MCU 判据 | Jetson 判据 | 不一致时的含义 |
+|:--:|----------|-------------|----------------|
+| **L1 物理字节** | `[JETSON LINK] dn>0` | gateway `bytes>0` | MCU dn>0 且 Jetson bytes=0 → **Jetson 读串口**或 PA2→RX |
+| **L3 下行 BLOB** | `[JETSON BLOB RX/CMD]`、`ARB=NORMAL` | gateway 发 0x01 | L3 通 = 下行 OK |
+| **L4 上行 BLOB** | `[JETSON LINK] 0x02/0x03≈250/5s` | listen-only / `blob02>0` | MCU up>0 且 Jetson uplink=0 → **L4 Jetson 收**；两边都 0 → MCU 未跑 |
+| **L4 ROS** | — | `ros2 topic hz` | **须在 gateway `blob02>0` 窗口内测** |
+
+**定责命令（MCU 工程师 ↔ Jetson 工程师同步执行）**：
+
+```bash
+# Jetson：必须独占串口
+pkill -9 -f rs232_gateway; pkill -9 -f agv_base_driver; sleep 2
+fuser /dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0
+
+# 测上行（MCU 应已 ARB=NORMAL 或至少 RTOS 在跑）
+python3 tools/jetson_rs232_link_test.py --port "$SERIAL" --listen-only --blob-v2 --time 15
+```
+
+同期 F407 USB 调试口应 **每 5 s** 刷新：
+
+```text
+[JETSON LINK] +5s: dn=... up=30000+ 0x02=250 0x03=250 ...
+```
+
+| F407 `up` 增量 | Jetson listen-only | 结论 |
+|:--:|:--:|------|
+| **≈250/5s** | **0x02>0** | 全链路通；若 topic 空 → gateway publish |
+| **≈250/5s** | **全 0** | **Jetson RX 路径**（占用/adapter/驱动）；**非 MCU 协议** |
+| **0 且 LINK 不刷新** | 全 0 | **MCU 未运行** 或调试口断开 |
+| **≈250/5s** | 间歇 0 | 查 MCU 是否 reboot、gateway 是否抢 port |
+
+##### C.9.16.4 `up=` 与 PA2 真实出波形的区别
+
+```text
+BlobPack_UplinkTick → BlobRs232_Send → USART3_SendData → [DMA/TXE] → USART2->DR → PA2
+                              ↑
+                    s_tx_bytes 在此累加（软件计数）
+```
+
+- **`[JETSON LINK] up=`**：软件层「已提交发送」字节增量。  
+- **Jetson `bytes=` / listen-only `0x02`**：对端 **实际收到** 的字节。  
+- 两者应 **同量级**（NORMAL 下 ~30 KB/5 s）；若 MCU `up` 涨而 Jetson 恒 0，问题在 **PA2 之后**（线/adapter/Jetson read），不在 BLOB 组帧。
+
+##### C.9.16.5 阶段收口状态（2026-06-17）
+
+| 项目 | MCU 侧 | Jetson 侧 |
+|------|:--:|:--:|
+| 下行 0x01 → `ARB=NORMAL` | **已通过** | gateway 发 0x01 已证明 |
+| 上行 0x02/0x03 软件发送 | **已通过**（`up≈32KB/5s`） | 首窗 `pub_status>0` 已证明解析+发布 |
+| 上行 **持续**稳定 | **正常发**（与 gateway 是否 read 无关） | **未通过**：~5 s 后 `bytes=0` → **gateway RX 待修** |
+| ROS topic / cmd_vel | — | **短窗口内**可验证；见 §C.9.17 |
+
+> **MCU 固件阶段 A（L3）已收口**；L4 **能力**已在 gateway 首窗验证，**持续性**按 §C.9.10.1 修 Jetson `rs232_gateway` RX，**无需再改 MCU BLOB 协议栈**。
+
+#### C.9.17 gateway 短窗口联调与 MCU 日志节奏（2026-06-17）
+
+本节记录 **gateway launch 后「一阵好、一阵 bytes=0」** 的定责结论与 **可立即执行** 的验证步骤（MCU ↔ Jetson 两侧对照）。
+
+##### C.9.17.1 MCU 侧：进入 NORMAL 后的日志节奏（多为正常现象）
+
+MCU **不会**在 `ARB=NORMAL` 后持续刷屏。固件刻意控制 log 频率（见 `agv_blob_pack.c`、`rtos_tasks.c`）：
+
+| 日志 | 频率 | 代码位置 |
+|------|------|----------|
+| `[JETSON BLOB RX] first 0x01` | **仅一次**（首帧 0x01） | `BlobPack_HandleDownlink` |
+| `[Arbiter] Mode switch: DEGRADED → RECOVERING → NORMAL` | **各一次** | `Arbiter_SwitchMode` |
+| `[JETSON BLOB CMD] seq=…` | **约每 1 s 一条**（每 50 帧 0x01 打一次） | `BlobPack_ApplyControlPayload` |
+| `[JETSON LINK] +5s: …` | **每 5 s 一行**（250×20 ms tick） | `vJetsonTask` + `RTOS_VERBOSE_JETSON_LINK` |
+
+**因此**：变成 NORMAL 后 **5～10 s 内** 应出现下一行 `[JETSON LINK]`；**没有**新的 `[JETSON BLOB CMD]` 但 **有** `[JETSON LINK]` 是正常的（CMD 降频）。
+
+**启动段 `up=20824B 0x02=250` 且 `dn=0`、`ARB=DEGRADED`**：MCU **一直在发上行**（`BlobPack_UplinkTick` 与心跳无关）；当时 **尚未收到** Jetson 0x01，故 DEGRADED/HB=LOST——**不是 MCU 停发**。
+
+**异常**（非正常）：
+
+| 现象 | 含义 |
+|------|------|
+| NORMAL 后 **>15 s 仍无** `[JETSON LINK]` | MCU hang、调试 USB 未重连、或 `RTOS_VERBOSE_JETSON_LINK=0` |
+| `[JETSON LINK]` **整屏冻结** | 调试口断开或 MCU 停跑（见 §C.9.16.2） |
+| 有 `[CTRL] FORCE STOP ON (KEY0)` | `Arbiter_Process` 被跳过，`ARB` 可能长期 DEGRADED |
+
+##### C.9.17.2 Jetson 侧：gateway 两窗 log 含义
+
+典型 **5 s 统计窗** 对比：
+
+| 时段 | gateway RX | 含义 |
+|------|------------|------|
+| **第 1 窗** | `bytes=12894 blob02=86 pub_status=147 resync=4452` | ✅ 读到字节、解析 0x02、已 publish |
+| **第 2 窗起** | `bytes=0 blob02=0 pub_status=0 resync=0` | ❌ **`read()` 空**，非解析失步（`resync=0`） |
+
+**定责**：
+
+- **下行通** → MCU 收到 0x01 → `ARB=NORMAL` ✅（L3）
+- **上行首窗通** → `pub_status>0` 证明 **解析 + ROS 发布链路 OK** ✅（L4 能力）
+- **~5～10 s 后 bytes=0** → **gateway 读串口中断**；与 `link_test` 能连续收、gateway 间歇收 **同根因** → **修 gateway RX**（§C.9.10.1），**不是 MCU 固件，也不必先动线**
+
+**与 listen-only 对照**：
+
+| 工具 | 发 0x01 | 读上行 | 典型结果 |
+|------|:--:|:--:|----------|
+| `link_test --blob-v2` | ✅ | ✅ | 双向稳定（独占串口） |
+| `link_test --listen-only` | ❌ | ✅ | 仅测上行；MCU `dn=0` 正常 |
+| `rs232_gateway` launch | ✅ | **间歇** | 混流 + RX 线程/DTR/占用 |
+
+##### C.9.17.3 短窗口验证清单（pub_status>0 后 5 s 内执行）
+
+**前提**：只 **一个** gateway 实例；**不要**反复 Ctrl+C 重启（每次打断 0x01 → MCU 回 DEGRADED）。
+
+**Jetson 终端 A**（保持 gateway 运行）：
+
+```bash
+ros2 launch agv_base_driver jetson_rs232_bringup.launch.py \
+  time_sync_enable:=false tx_rate_hz:=10 uplink_timeout_ms:=2000
+```
+
+盯 log 直到出现 **`pub_status>0`**（常与 `blob02>0` 同窗）。
+
+**Jetson 终端 B**（出现 pub_status 后 **立刻**，5 s 内）：
+
+```bash
+source ~/catkin_ws/cangyirobot/install/setup.bash
+ros2 topic hz /jetson_rs232/v3_status
+ros2 topic echo /jetson_rs232/v3_status --field safety_state
+ros2 topic echo /jetson_rs232/v3_status --field fb_v_mm_s
+```
+
+**F407 USB 调试口**（同期下一行 `[JETSON LINK]` 期望）：
+
+```text
+dn=1000+  ctrl=50+  up=30000+  0x02=250  0x03=250  ARB=NORMAL  HB=OK
+```
+
+| Jetson | MCU 同期 | 结论 |
+|--------|----------|------|
+| `pub_status>0` | `dn>0` `ARB=NORMAL` | **双向在该窗口通** → 可测 cmd_vel |
+| `pub_status>0` | `dn=0` | 时间未对齐或 gateway 未真正下发 0x01 |
+| topic 无输出 | `pub_status>0` 在 log 里 | 测 topic **晚于** bytes=0 窗 → 重测 |
+| `bytes=0` | `up=250/5s` LINK 仍刷新 | **MCU 在发，gateway 未读** → §C.9.10.1 |
+
+**下发验证**（gateway 仍在跑、上表双向通时）：
+
+```bash
+ros2 topic pub --rate 10 /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
+```
+
+MCU 期望：`[JETSON BLOB CMD] seq=… v=100 …`（`v=100` = 0.1 m/s，单位 mm/s）。
+
+##### C.9.17.4 操作建议
+
+| 建议 | 原因 |
+|------|------|
+| launch 后 **不要频繁 Ctrl+C 重启** | 打断 0x01 → MCU `Heartbeat lost` → DEGRADED |
+| **只开一个** gateway | 多进程抢 `/dev/serial/by-id/...` → `bytes=0` |
+| **`pub_status>0` 后 5～10 s 内**测 topic / cmd_vel | 上行稳定窗很短 |
+| `bytes=0` 但 MCU **`up=250` 且 LINK 仍刷新** | 优先 **拔插 Prolific USB** + 单 gateway；仍失败 → 修 gateway RX，非 MCU |
+| 测 topic 字段名 | `safety_state`（勿写成 `safety_statete`） |
+
+##### C.9.17.5 结论表（2026-06-17 gateway launch 实录）
+
+| 项目 | 状态 | 说明 |
+|------|:--:|------|
+| 下行 Jetson→MCU | ✅ | `ARB=NORMAL` 已证明 |
+| 上行 MCU 软件发送 | ✅ | `[JETSON LINK] up≈32KB/5s` |
+| 上行 gateway 解析 | ✅ | 首窗 `blob02=86 pub_status=147` |
+| 上行 gateway **持续 read** | ❌ | 次窗起 `bytes=0` → **§C.9.10.1** |
+| MCU NORMAL 后 log 少 | **正常** | 等 `[JETSON LINK] +5s` |
+| 阶段 A（L3） | **已过** | MCU 可冻结 |
+| 阶段 B（L4 短窗） | **已验证能力** | topic/cmd_vel 在 pub 窗内测 |
+| 阶段 B（L4 持续） | **待修** | gateway RX 间歇中断 |
+
+---
 
 ### C.8 相关文档
 
@@ -671,6 +1159,10 @@ ab 01 01 SEQ 00 0e 00 01 00  + 14B agv_control_t
 
 | 版本 | 日期 | 内容 |
 |------|------|------|
+| v2.0-draft.5.11 | 2026-06-17 | **vJetsonTask 栈 768**；`[JETSO` 半行截断记入 §C.9.16.2 |
+| v2.0-draft.5.10 | 2026-06-17 | **§C.9.17** gateway 短窗口联调、MCU NORMAL 后日志节奏、pub_status 验证与 cmd_vel |
+| v2.0-draft.5.9 | 2026-06-17 | 新增 **§C.9.15** MCU 收发数据流/函数链；**§C.9.16** 联调现象对照（frozen log、listen-only、定责）；DMA TX/RX 拆分记入 §C.9.11 |
+| v2.0-draft.5.8 | 2026-06-17 | §C.9 增问题 8/9、L4 诊断、gateway 清单；**调试口 verbosity** 与 **`[JETSON LINK]`** 一行日志 |
 | v2.0-draft.5.7 | 2026-06-16 | 新增 **§C.9** RS232 BLOB 联调实录（问题/解决方案）；修正 gateway 发 0x01 说明 |
 | v2.0-draft.5.6 | 2026-06-16 | 新增 **附录 C**：Jetson 侧工作与 RS232 联调清单 |
 | v2.0-draft.5.5 | 2026-06-15 | 新增 §0.2 RS232 / §0.3 CAN 双传输映射与 CAN ID 表 |

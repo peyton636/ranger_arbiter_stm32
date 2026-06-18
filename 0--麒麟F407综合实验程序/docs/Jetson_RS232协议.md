@@ -587,6 +587,8 @@ IDLE:
   其他   → 丢弃，回 IDLE
 ```
 
+> **BLOB v2（`use_blob_v2=true`）**：上述「其他→丢弃」**不适用**。IDLE 须 **`0xAB` → `0xA5`**，并解析 MCU 上行 **BLOB 0x02/0x03**；混流失步、F407 已 NORMAL 但 topic 空等问题见 [Jetson_BLOB协议_v2.md §C.9.10](./Jetson_BLOB协议_v2.md#c910-问题-9f407-已-normaljetson-topic-空--上行超时)。
+
 ### 14.2 发送
 
 1. 控制：每 **≤20 ms** 发 V3 **0x01**，**seq 递增**；

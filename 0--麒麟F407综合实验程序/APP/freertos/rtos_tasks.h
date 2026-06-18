@@ -5,7 +5,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#define MOTION_TASK_STACK_SIZE    384
+#define MOTION_TASK_STACK_SIZE    512   /* 含 Jetson 延后 debug printf */
 #define MOTION_TASK_PRIO          6
 #define MOTION_TASK_CYCLE_MS      10
 
@@ -21,11 +21,11 @@
 #define KEY_TASK_PRIO             4
 #define KEY_TASK_CYCLE_MS         20
 
-#define JETSON_TASK_STACK_SIZE    384
+#define JETSON_TASK_STACK_SIZE    1024
 #define JETSON_TASK_PRIO          3
 #define JETSON_TASK_CYCLE_MS      20
 
-#define GPS_TASK_STACK_SIZE       512
+#define GPS_TASK_STACK_SIZE       768
 #define GPS_TASK_PRIO             2
 #define GPS_TASK_CYCLE_MS         100
 

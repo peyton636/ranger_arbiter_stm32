@@ -1,6 +1,7 @@
 #include "arbiter.h"
 #include "can.h"
 #include "usart.h"
+#include "rtos_config.h"
 #include "stdio.h"
 #include "SysTick.h"
 #include "time.h"
@@ -464,6 +465,7 @@ static void Arbiter_LogDynamicSafety(s16 speed_ref, u16 near_dyn, u16 far_dyn,
 	u16 f, u16 b, u16 l, u16 r, u8 obs_f, u8 obs_b, u8 obs_l, u8 obs_r,
 	u8 danger_f, u8 danger_b, u8 danger_l, u8 danger_r)
 {
+#if RTOS_VERBOSE_CHASSIS_LOG
 	static u32 last_tick = 0;
 
 	if((OSTime - last_tick) < ARB_MS_TO_TICKS(500))
@@ -480,6 +482,23 @@ static void Arbiter_LogDynamicSafety(s16 speed_ref, u16 near_dyn, u16 far_dyn,
 	       (unsigned int)b, (int)obs_b, (int)danger_b,
 	       (unsigned int)l, (int)obs_l, (int)danger_l,
 	       (unsigned int)r, (int)obs_r, (int)danger_r);
+#else
+	(void)speed_ref;
+	(void)near_dyn;
+	(void)far_dyn;
+	(void)f;
+	(void)b;
+	(void)l;
+	(void)r;
+	(void)obs_f;
+	(void)obs_b;
+	(void)obs_l;
+	(void)obs_r;
+	(void)danger_f;
+	(void)danger_b;
+	(void)danger_l;
+	(void)danger_r;
+#endif
 }
 
 static s32 Arbiter_CalcDistFactorPct(u16 dist_mm, u8 valid, s16 speed_ref_mm_s)

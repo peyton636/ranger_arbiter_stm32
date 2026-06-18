@@ -3,9 +3,26 @@
 
 #include "system.h"
 
-/* 1=Jetson RS232 �� BLOB v2��0=���� V3(0xAA) Ӧ��֡ */
+/* 1=Jetson RS232 �� BLOB v2��0=���� V3(0xAA) Ӧ��֡ */
 #ifndef JETSON_USE_BLOB_V2
 #define JETSON_USE_BLOB_V2  1
+#endif
+
+/* 1=联调档位：只高频发 0x02/0x03，其余帧降频，减轻 115200 混流 */
+#ifndef BLOB_UPLINK_MINIMAL
+#define BLOB_UPLINK_MINIMAL  1
+#endif
+
+/* DMA TX：非阻塞发送（推荐开） */
+#ifndef JETSON_USART2_DMA_TX
+#define JETSON_USART2_DMA_TX  1
+#endif
+/* DMA+IDLE RX：联调中出现 ore 风暴且 dn=0 时暂关，改回字节中断 RX */
+#ifndef JETSON_USART2_DMA_RX
+#define JETSON_USART2_DMA_RX  0
+#endif
+#if !defined(JETSON_USART2_DMA)
+#define JETSON_USART2_DMA     (JETSON_USART2_DMA_TX || JETSON_USART2_DMA_RX)
 #endif
 
 #define BLOB_HDR_MAGIC        0xABu

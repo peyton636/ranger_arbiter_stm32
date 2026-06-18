@@ -130,6 +130,7 @@ void App_MotionHwInit(void)
 	USART3_PrintHwDiag();
 	JetsonCAN_Init();
 #endif
+	
 	GPS_USART6_Init(9600);
 	DistanceSensor_Init();
 	CAN1_Init_RangerMini();
@@ -147,6 +148,7 @@ void App_MotionHwInit(void)
 	printf("[JETSON] USART2 PA2/PA3, 115200, V3 24-byte (0xAA) frame\r\n");
 #endif
 #endif
+
 	printf("[CAN1] Chassis PA11/12 init OK, MCR=0x%08X MSR=0x%08X\r\n",
 		(unsigned int)CAN1->MCR, (unsigned int)CAN1->MSR);
 #if ARBITER_IGNORE_DIST_SENSOR
@@ -155,9 +157,20 @@ void App_MotionHwInit(void)
 	printf("[MOTION] Dist ctrl ON, wait Jetson V3, beep=%s (KEY1 toggle)\r\n",
 		g_beep_dist_enable ? "ON" : "OFF");
 #endif
+
 #if !JETSON_LINK_CAN
 #if JETSON_USE_BLOB_V2
-	printf("[JETSON] downlink: 0xAB MSG 0x01; uplink: 0x02/0x03/0x04...; log tag [JETSON BLOB CMD]\r\n");
+#if BLOB_UPLINK_MINIMAL
+	printf("[JETSON] uplink profile=MINIMAL (0x02/0x03@50Hz, others reduced)\r\n");
+#else
+	printf("[JETSON] uplink profile=FULL\r\n");
+#endif
+#if JETSON_USART2_DMA_TX
+	printf("[JETSON] USART2 DMA TX + byte-ISR RX (non-blocking TX)\r\n");
+#else
+	printf("[JETSON] USART2 byte-ISR RX, blocking TXE TX\r\n");
+#endif
+	printf("[JETSON] downlink: 0xAB MSG 0x01; log tag [JETSON BLOB CMD]\r\n");
 #else
 	printf("[JETSON] RS232 also sends GPS/0x108/0x109/0x10B via 0xA5 service frames\r\n");
 #endif

@@ -15,6 +15,7 @@ void BlobPack_SendGps(const GPS_Data_t *gps);
 
 u32 BlobPack_GetRxCtrlCount(void);
 u32 BlobPack_GetRxOtherCount(void);
+void BlobPack_FlushDebugLog(void);
 
 #endif
 

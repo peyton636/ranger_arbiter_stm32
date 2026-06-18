@@ -61,6 +61,11 @@
 .\obj\rtos_tasks.o: .\APP\usart3\usart3.h
 .\obj\rtos_tasks.o: .\APP\jetson_can\jetson_can.h
 .\obj\rtos_tasks.o: .\APP\gps\gps.h
+.\obj\rtos_tasks.o: .\Public\usart.h
+.\obj\rtos_tasks.o: .\LwIP\lwip_app\lwip_comm\lwip_comm.h
+.\obj\rtos_tasks.o: .\APP\lan8720\lan8720.h
+.\obj\rtos_tasks.o: .\Libraries\STM32F4x7_ETH_Driver\inc\stm32f4x7_eth.h
+.\obj\rtos_tasks.o: .\Libraries\STM32F4x7_ETH_Driver\inc\stm32f4x7_eth_conf.h
 .\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_wire.h
 .\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_pack.h
 .\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_rs232.h

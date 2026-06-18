@@ -11,6 +11,8 @@
 #include "jetson_can.h"
 #include "gps.h"
 #include "app_boot.h"
+#include "stdio.h"
+#include "usart.h"
 #if ETH_LWIP_ENABLE
 #include "lwip_comm.h"
 #include "lan8720.h"
@@ -38,6 +40,58 @@ static u16 s_can_lcd_div = 0;
 static u8 s_jetson_tx_toggle = 0;
 static u32 s_ui_frame_count = 0;
 static TickType_t s_ui_last_stack_log = 0;
+
+#if !JETSON_LINK_CAN && JETSON_USE_BLOB_V2 && RTOS_VERBOSE_JETSON_LINK
+static u16 s_gps_link_div = 0;
+static u32 s_link_last_rx_b = 0;
+static u32 s_link_last_ab = 0;
+static u32 s_link_last_tx_b = 0;
+static u32 s_link_last_m02 = 0;
+static u32 s_link_last_m03 = 0;
+
+/* 在 vGpsTask 定时打印，不依赖 vJetsonTask 循环计数 */
+static void JetsonLink_TickEvery5s(void)
+{
+	u32 rx_b, ore, ab;
+	u32 tx_b, tx_f, tx_m02, tx_m03;
+	u32 ctrl, db, dab, dtx, dm02, dm03;
+	u8 arb, hb_lost;
+
+	if(++s_gps_link_div < 50)
+		return;
+	s_gps_link_div = 0;
+
+	USART3_GetRxStats(&rx_b, &ore, &ab);
+	BlobRs232_GetTxStats(&tx_b, &tx_f, &tx_m02, &tx_m03);
+	ctrl = BlobPack_GetRxCtrlCount();
+	db = rx_b - s_link_last_rx_b;
+	dab = ab - s_link_last_ab;
+	dtx = tx_b - s_link_last_tx_b;
+	dm02 = tx_m02 - s_link_last_m02;
+	dm03 = tx_m03 - s_link_last_m03;
+	s_link_last_rx_b = rx_b;
+	s_link_last_ab = ab;
+	s_link_last_tx_b = tx_b;
+	s_link_last_m02 = tx_m02;
+	s_link_last_m03 = tx_m03;
+
+	App_ArbiterLock();
+	arb = (u8)arb_state.current_mode;
+	hb_lost = arb_state.heartbeat_lost ? 1u : 0u;
+	App_ArbiterUnlock();
+	if(arb > ARBITER_MODE_RECOVERING)
+		arb = ARBITER_MODE_DEGRADED;
+
+	printf("[JETSON LINK] +5s: dn=%luB ab=%lu ctrl=%lu rej=%lu ore=%lu | up=%luB 0x02=%lu 0x03=%lu ARB=%s HB=%s\r\n",
+		(unsigned long)db, (unsigned long)dab,
+		(unsigned long)ctrl,
+		(unsigned long)BlobRs232_GetHdrRejectCount(),
+		(unsigned long)ore,
+		(unsigned long)dtx, (unsigned long)dm02, (unsigned long)dm03,
+		ARBITER_MODE_NAMES[arb],
+		hb_lost ? "LOST" : "OK");
+}
+#endif
 
 static u16 s_pick_filtered_mm(u8 idx, u16 raw_if_ok)
 {
@@ -149,12 +203,6 @@ void vJetsonTask(void *pvParameters)
 	TickType_t xLastWakeTime = xTaskGetTickCount();
 	u8 jetson_frame[JETSON_FRAME_LEN];
 	u16 f, b, l, r, n;
-	u16 rx_stat_div = 0;
-	u32 rx_last_b = 0;
-	u32 rx_last_ab = 0;
-	u32 tx_last_b = 0;
-	u32 tx_last_m02 = 0;
-	u32 tx_last_m03 = 0;
 
 	(void)pvParameters;
 
@@ -216,43 +264,6 @@ void vJetsonTask(void *pvParameters)
 		}
 #endif
 		App_ArbiterUnlock();
-
-#if !JETSON_LINK_CAN && JETSON_USE_BLOB_V2
-		if(++rx_stat_div >= 250)
-		{
-			u32 rx_b, ore, ab;
-			u32 ctrl;
-			u32 db, dab;
-			u32 mab, ma5, maa;
-			u32 tx_b, tx_f, tx_m02, tx_m03;
-			u32 dtx, dm02, dm03;
-
-			rx_stat_div = 0;
-			USART3_GetRxStats(&rx_b, &ore, &ab);
-			USART3_GetRxMagicStats(&mab, &ma5, &maa);
-			BlobRs232_GetTxStats(&tx_b, &tx_f, &tx_m02, &tx_m03);
-			ctrl = BlobPack_GetRxCtrlCount();
-			db = rx_b - rx_last_b;
-			dab = ab - rx_last_ab;
-			dtx = tx_b - tx_last_b;
-			dm02 = tx_m02 - tx_last_m02;
-			dm03 = tx_m03 - tx_last_m03;
-			rx_last_b = rx_b;
-			rx_last_ab = ab;
-			tx_last_b = tx_b;
-			tx_last_m02 = tx_m02;
-			tx_last_m03 = tx_m03;
-			printf("[JETSON RX] +5s: bytes=%lu ab_idle=%lu ore=%lu ctrl=%lu rej=%lu | magic AB/A5/AA=%lu/%lu/%lu tot=%lu\r\n",
-				(unsigned long)db, (unsigned long)dab,
-				(unsigned long)ore, (unsigned long)ctrl,
-				(unsigned long)BlobRs232_GetHdrRejectCount(),
-				(unsigned long)mab, (unsigned long)ma5, (unsigned long)maa,
-				(unsigned long)rx_b);
-			printf("[JETSON TX] +5s: bytes=%lu 0x02=%lu 0x03=%lu tot_bytes=%lu tot_frames=%lu\r\n",
-				(unsigned long)dtx, (unsigned long)dm02, (unsigned long)dm03,
-				(unsigned long)tx_b, (unsigned long)tx_f);
-		}
-#endif
 	}
 }
 
@@ -267,11 +278,17 @@ void vGpsTask(void *pvParameters)
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(GPS_TASK_CYCLE_MS));
 		GPS_Process();
 #if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
+		BlobPack_FlushDebugLog();
+#if RTOS_VERBOSE_JETSON_LINK
+		JetsonLink_TickEvery5s();
+#endif
 		BlobPack_SendGps(GPS_GetData());
 #else
 		JetsonCAN_SendGps(GPS_GetData());
 #endif
+#if RTOS_VERBOSE_GPS_LOG
 		GPS_PrintStatus();
+#endif
 	}
 }
 
@@ -348,7 +365,9 @@ void vUiTask(void *pvParameters)
 		if(g_sensor_updated)
 		{
 			s_ui_frame_count++;
+#if RTOS_VERBOSE_SENSOR_LOG
 			DistanceSensor_Print();
+#endif
 			SensorUI_UpdateCount(s_ui_frame_count);
 			if(g_sensor_ui_inited)
 				SensorUI_UpdateDistances(ds);
@@ -360,17 +379,21 @@ void vUiTask(void *pvParameters)
 
 		if(g_can_lcd_due)
 		{
+#if RTOS_VERBOSE_CHASSIS_LOG
 			Arbiter_PrintChassisFeedback();
+#endif
 			Chassis_UpdateOnLCD();
 			g_can_lcd_due = 0;
 		}
 
 		DistanceSensor_DrainLog();
 
+#if RTOS_VERBOSE_STACK_LOG
 		if((now - s_ui_last_stack_log) >= pdMS_TO_TICKS(RTOS_STACK_LOG_MS))
 		{
 			RTOS_PrintTaskStackWatermarks();
 			s_ui_last_stack_log = now;
 		}
+#endif
 	}
 }

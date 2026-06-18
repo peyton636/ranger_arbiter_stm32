@@ -85,14 +85,6 @@ u8 BlobRs232_RxFeed(u8 byte)
 		if(!BlobRs232_HeaderValid())
 		{
 			s_hdr_reject++;
-			if(s_hdr_reject <= 5u || (s_hdr_reject % 50u) == 0u)
-			{
-				printf("[BLOB RX] hdr reject #%lu id=%02X len=%u fidx=%u fcnt=%u flg=%02X\r\n",
-					(unsigned long)s_hdr_reject,
-					(unsigned)s_rx_buf[2], (unsigned)s_rx_payload_len,
-					(unsigned)s_rx_buf[6], (unsigned)s_rx_buf[7],
-					(unsigned)s_rx_buf[8]);
-			}
 			BlobRs232_RxReset();
 			return 1;
 		}

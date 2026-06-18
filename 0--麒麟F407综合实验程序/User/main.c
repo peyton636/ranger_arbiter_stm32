@@ -521,9 +521,11 @@ int main()
 #elif (UI_TEST_MODE == 1)
 	printf("[BOOT] UI_MODE=1 (arbiter_gui)\r\n");
 	App_MotionHwInit();
+	
 #if CHASSIS_CAN_MOTION_TEST
 	ChassisCanTest_RunOnce();
 #endif
+	
 	App_ShowBootSplash();
 	RTOS_AppStart();
 #elif (UI_TEST_MODE == 2)

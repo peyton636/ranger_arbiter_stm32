@@ -5,6 +5,27 @@
 
 static SemaphoreHandle_t s_print_mutex = NULL;
 
+static void Usart_PutByteTry(u8 ch)
+{
+	u32 spin;
+
+	USART_SendData(USART1, ch);
+	if(xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+	{
+		spin = 200000u;
+		while(USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET)
+		{
+			if(--spin == 0u)
+				break;
+		}
+	}
+	else
+	{
+		while(USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET)
+			;
+	}
+}
+
 void Usart_PrintMutexInit(void)
 {
 	if(s_print_mutex == NULL)
@@ -29,13 +50,52 @@ void Usart_PrintUnlock(void)
 	}
 }
 
+u8 Usart_TryWriteStr(const char *s)
+{
+	u8 locked = 0;
+
+	if(!s)
+		return 0;
+
+	if(s_print_mutex != NULL &&
+	   xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+	{
+		if(xSemaphoreTake(s_print_mutex, pdMS_TO_TICKS(20)) != pdTRUE)
+			return 0;
+		locked = 1;
+	}
+
+	while(*s)
+		Usart_PutByteTry((u8)*s++);
+
+	if(locked)
+		xSemaphoreGive(s_print_mutex);
+	return 1;
+}
+
 int fputc(int ch, FILE *p)
 {
+	u8 locked = 0;
+
 	(void)p;
-	Usart_PrintLock();
-	USART_SendData(USART1, (u8)ch);
-	while(USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
-	Usart_PrintUnlock();
+	if(s_print_mutex != NULL &&
+	   xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+	{
+		if(xSemaphoreTake(s_print_mutex, pdMS_TO_TICKS(10)) != pdTRUE)
+			return ch;
+		locked = 1;
+	}
+	else if(s_print_mutex != NULL &&
+	        xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED)
+	{
+		xSemaphoreTake(s_print_mutex, portMAX_DELAY);
+		locked = 1;
+	}
+
+	Usart_PutByteTry((u8)ch);
+
+	if(locked)
+		xSemaphoreGive(s_print_mutex);
 	return ch;
 }
 

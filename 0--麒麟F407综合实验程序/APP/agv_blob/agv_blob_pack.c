@@ -14,6 +14,18 @@ static u16 s_blob_cmd_log_div = 0;
 static volatile u32 s_blob_rx_ctrl = 0;
 static volatile u32 s_blob_rx_other = 0;
 
+/* 调试 log 延后到 vGpsTask 打印，避免 vJetsonTask 内 printf 阻塞/栈溢出 */
+static volatile u8 s_log_first_rx = 0;
+static u8 s_log_first_rx_seq = 0;
+static u16 s_log_first_rx_len = 0;
+static volatile u8 s_log_cmd = 0;
+static u8 s_log_cmd_seq = 0;
+static s16 s_log_cmd_v = 0;
+static u8 s_log_cmd_mode = 0;
+static u8 s_log_cmd_arb = 0;
+static volatile u8 s_log_bad_len = 0;
+static u16 s_log_bad_len_val = 0;
+
 static u32 BlobPack_NowMs(void)
 {
 	return (u32)(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -172,15 +184,14 @@ static void BlobPack_ApplyControlPayload(const u8 *p, u8 hdr_seq)
 	}
 
 	s_blob_cmd_log_div++;
-	if(s_blob_cmd_log_div >= 25)
+	if(s_blob_cmd_log_div >= 50)
 	{
-		printf("[JETSON BLOB CMD] seq=%u v=%d steer=%d omega=%d mode=%u\r\n",
-			(unsigned)hdr_seq,
-			(int)arb_state.jetson_cmd.v,
-			(int)arb_state.jetson_cmd.steer,
-			(int)arb_state.jetson_cmd.omega,
-			(unsigned)arb_state.jetson_cmd.mode_req);
 		s_blob_cmd_log_div = 0;
+		s_log_cmd_seq = hdr_seq;
+		s_log_cmd_v = arb_state.jetson_cmd.v;
+		s_log_cmd_mode = arb_state.jetson_cmd.mode_req;
+		s_log_cmd_arb = (u8)arb_state.current_mode;
+		s_log_cmd = 1;
 	}
 }
 
@@ -360,14 +371,17 @@ void BlobPack_HandleDownlink(const blob_rx_frame_t *frame)
 			s_blob_rx_ctrl++;
 			if(s_blob_rx_ctrl == 1u)
 			{
-				printf("[JETSON BLOB RX] first 0x01 seq=%u len=%u\r\n",
-					(unsigned)frame->seq, (unsigned)frame->payload_len);
+				s_log_first_rx_seq = frame->seq;
+				s_log_first_rx_len = frame->payload_len;
+				s_log_first_rx = 1;
 			}
 			if(frame->payload_len == BLOB_PAYLOAD_CONTROL)
 				BlobPack_ApplyControlPayload(frame->payload, frame->seq);
 			else
-				printf("[JETSON BLOB RX] 0x01 bad len=%u expect=%u\r\n",
-					(unsigned)frame->payload_len, (unsigned)BLOB_PAYLOAD_CONTROL);
+			{
+				s_log_bad_len_val = frame->payload_len;
+				s_log_bad_len = 1;
+			}
 			break;
 		case BLOB_MSG_SENSOR_CFG:
 			s_blob_rx_other++;
@@ -390,12 +404,68 @@ u32 BlobPack_GetRxOtherCount(void)
 	return s_blob_rx_other;
 }
 
+void BlobPack_FlushDebugLog(void)
+{
+	u8 first;
+	u8 cmd;
+	u8 bad;
+
+	taskENTER_CRITICAL();
+	first = s_log_first_rx;
+	s_log_first_rx = 0;
+	cmd = s_log_cmd;
+	s_log_cmd = 0;
+	bad = s_log_bad_len;
+	s_log_bad_len = 0;
+	taskEXIT_CRITICAL();
+
+	if(first)
+	{
+		static char line[64];
+		int n;
+
+		n = snprintf(line, sizeof(line),
+			"[JETSON BLOB RX] first 0x01 seq=%u len=%u\r\n",
+			(unsigned)s_log_first_rx_seq, (unsigned)s_log_first_rx_len);
+		if(n > 0)
+			printf("%s", line);
+	}
+	if(cmd)
+	{
+		static char line[72];
+		int n;
+		u8 arb = s_log_cmd_arb;
+
+		if(arb > ARBITER_MODE_RECOVERING)
+			arb = ARBITER_MODE_DEGRADED;
+		n = snprintf(line, sizeof(line),
+			"[JETSON BLOB CMD] seq=%u v=%d mode=%u ARB=%s\r\n",
+			(unsigned)s_log_cmd_seq,
+			(int)s_log_cmd_v,
+			(unsigned)s_log_cmd_mode,
+			ARBITER_MODE_NAMES[arb]);
+		if(n > 0)
+			printf("%s", line);
+	}
+	if(bad)
+	{
+		static char line[56];
+		int n;
+
+		n = snprintf(line, sizeof(line),
+			"[JETSON BLOB RX] 0x01 bad len=%u expect=%u\r\n",
+			(unsigned)s_log_bad_len_val, (unsigned)BLOB_PAYLOAD_CONTROL);
+		if(n > 0)
+			printf("%s", line);
+	}
+}
+
 void BlobPack_UplinkTick(const ArbiterState_t *state,
 	u16 sonar_f, u16 sonar_b, u16 sonar_l, u16 sonar_r, u16 nearest_mm)
 {
 	s_uplink_div++;
 
-	/* ������ʧʱҲ���� 0x02/0x03������ gateway ������ 300ms �ڿ������� */
+	/* 心跳丢失时也保持 0x02/0x03，便于 gateway 300ms 内看到上行 */
 	if(state->heartbeat_lost)
 	{
 		BlobPack_SendMotion(state);
@@ -404,7 +474,35 @@ void BlobPack_UplinkTick(const ArbiterState_t *state,
 		return;
 	}
 
-	/* ? tick ??? 0x02+0x03??gateway 300ms ?????????????????��???? 115200 ???? */
+#if BLOB_UPLINK_MINIMAL
+	/* 联调档位：必保 0x02+0x03@50Hz（gateway 看门狗），其余降频 */
+	BlobPack_SendMotion(state);
+	BlobPack_SendMcuStatus(state, sonar_f, sonar_b, sonar_l, sonar_r, nearest_mm);
+
+	if((s_uplink_div % 4u) == 0u)
+		BlobPack_SendSensor(sonar_f, sonar_b, sonar_l, sonar_r);
+
+	if((s_uplink_div % 8u) == 0u)
+	{
+		if(s_motor_toggle == 0)
+		{
+			BlobPack_SendMotorBlock(BLOB_MSG_MOTOR04, 0);
+			s_motor_toggle = 1;
+		}
+		else
+		{
+			BlobPack_SendMotorBlock(BLOB_MSG_MOTOR58, 4);
+			s_motor_toggle = 0;
+		}
+	}
+
+	if((s_uplink_div % 20u) == 0u)
+		BlobPack_SendEnergy(state);
+
+	if((s_uplink_div % 50u) == 0u)
+		BlobPack_SendMotorPos(state);
+#else
+	/* 全量档位：每 tick 0x02+0x03，其余错峰 */
 	BlobPack_SendMotion(state);
 	BlobPack_SendMcuStatus(state, sonar_f, sonar_b, sonar_l, sonar_r, nearest_mm);
 
@@ -430,6 +528,7 @@ void BlobPack_UplinkTick(const ArbiterState_t *state,
 
 	if((s_uplink_div % 50u) == 0u)
 		BlobPack_SendMotorPos(state);
+#endif
 }
 
 void BlobPack_SendGps(const GPS_Data_t *gps)

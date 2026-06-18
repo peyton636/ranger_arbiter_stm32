@@ -1,5 +1,6 @@
 #include "usart3.h"
 #include "stm32f4xx.h"
+#include "stm32f4xx_dma.h"
 #include "stdio.h"
 #include "beep.h"
 #include "can2.h"
@@ -67,6 +68,119 @@ void USART3_TxMutexInit(void)
 		s_usart2_tx_mutex = xSemaphoreCreateMutex();
 }
 
+#if JETSON_USART2_DMA_TX && JETSON_USE_BLOB_V2
+#define JETSON_TX_DMA_MAX   128u
+
+static u8 s_tx_dma_buf[JETSON_TX_DMA_MAX];
+static u8 s_tx_pend_buf[JETSON_TX_DMA_MAX];
+static volatile u16 s_tx_pend_len = 0;
+static volatile u8 s_tx_pend_valid = 0;
+static volatile u8 s_tx_dma_busy = 0;
+
+#if JETSON_USART2_DMA_RX
+#define JETSON_RX_DMA_SIZE  256u
+static u8 s_rx_dma_buf[JETSON_RX_DMA_SIZE];
+void USART3_ProcessRxByte(u8 byte);
+#endif
+
+static void USART3_TxDmaKick(const u8 *data, u16 len)
+{
+	u16 i;
+
+	for(i = 0; i < len; i++)
+		s_tx_dma_buf[i] = data[i];
+	DMA_Cmd(DMA1_Stream6, DISABLE);
+	while(DMA1_Stream6->CR & DMA_SxCR_EN)
+		;
+	DMA1_Stream6->M0AR = (u32)s_tx_dma_buf;
+	DMA_SetCurrDataCounter(DMA1_Stream6, len);
+	DMA_Cmd(DMA1_Stream6, ENABLE);
+	s_tx_dma_busy = 1;
+}
+
+static void USART3_DmaInit(void)
+{
+	DMA_InitTypeDef dma;
+	NVIC_InitTypeDef nvic;
+
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA1, ENABLE);
+
+#if JETSON_USART2_DMA_RX
+	DMA_DeInit(DMA1_Stream5);
+	dma.DMA_Channel = DMA_Channel_4;
+	dma.DMA_PeripheralBaseAddr = (u32)&USART2->DR;
+	dma.DMA_Memory0BaseAddr = (u32)s_rx_dma_buf;
+	dma.DMA_DIR = DMA_DIR_PeripheralToMemory;
+	dma.DMA_BufferSize = JETSON_RX_DMA_SIZE;
+	dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+	dma.DMA_MemoryInc = DMA_MemoryInc_Enable;
+	dma.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+	dma.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+	dma.DMA_Mode = DMA_Mode_Normal;
+	dma.DMA_Priority = DMA_Priority_VeryHigh;
+	dma.DMA_FIFOMode = DMA_FIFOMode_Disable;
+	dma.DMA_FIFOThreshold = DMA_FIFOThreshold_Full;
+	dma.DMA_MemoryBurst = DMA_MemoryBurst_Single;
+	dma.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
+	DMA_Init(DMA1_Stream5, &dma);
+	DMA_Cmd(DMA1_Stream5, ENABLE);
+	USART_DMACmd(USART2, USART_DMAReq_Rx, ENABLE);
+	USART_ITConfig(USART2, USART_IT_IDLE, ENABLE);
+#else
+	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
+#endif
+
+	DMA_DeInit(DMA1_Stream6);
+	dma.DMA_Channel = DMA_Channel_4;
+	dma.DMA_PeripheralBaseAddr = (u32)&USART2->DR;
+	dma.DMA_Memory0BaseAddr = (u32)s_tx_dma_buf;
+	dma.DMA_DIR = DMA_DIR_MemoryToPeripheral;
+	dma.DMA_BufferSize = 0;
+	dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+	dma.DMA_MemoryInc = DMA_MemoryInc_Enable;
+	dma.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+	dma.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+	dma.DMA_Mode = DMA_Mode_Normal;
+	dma.DMA_Priority = DMA_Priority_High;
+	dma.DMA_FIFOMode = DMA_FIFOMode_Disable;
+	dma.DMA_FIFOThreshold = DMA_FIFOThreshold_Full;
+	dma.DMA_MemoryBurst = DMA_MemoryBurst_Single;
+	dma.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
+	DMA_Init(DMA1_Stream6, &dma);
+
+	DMA_ITConfig(DMA1_Stream6, DMA_IT_TC, ENABLE);
+	nvic.NVIC_IRQChannel = DMA1_Stream6_IRQn;
+	nvic.NVIC_IRQChannelPreemptionPriority = 6;
+	nvic.NVIC_IRQChannelSubPriority = 1;
+	nvic.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&nvic);
+
+	USART_DMACmd(USART2, USART_DMAReq_Tx, ENABLE);
+}
+#endif
+
+#if JETSON_USART2_DMA_RX && JETSON_USE_BLOB_V2
+static void USART3_RxDmaRestart(void)
+{
+	DMA_Cmd(DMA1_Stream5, DISABLE);
+	while(DMA1_Stream5->CR & DMA_SxCR_EN)
+		;
+	DMA_SetCurrDataCounter(DMA1_Stream5, JETSON_RX_DMA_SIZE);
+	DMA_Cmd(DMA1_Stream5, ENABLE);
+}
+
+static void USART3_RxDmaFeed(u16 n)
+{
+	u16 i;
+
+	for(i = 0; i < n; i++)
+	{
+		s_usart2_rx_bytes++;
+		USART3_ProcessRxByte(s_rx_dma_buf[i]);
+	}
+}
+#endif
+
 void USART3_GetRxStats(u32 *rx_bytes, u32 *ore_cnt, u32 *ab_idle)
 {
 	if(rx_bytes) *rx_bytes = s_usart2_rx_bytes;
@@ -83,8 +197,17 @@ void USART3_GetRxMagicStats(u32 *raw_ab, u32 *raw_a5, u32 *raw_aa)
 
 void USART3_PrintHwDiag(void)
 {
-	printf("[JETSON HW] USART2 CR1=0x%04X SR=0x%04X | Jetson TX->PA3(RX) MCU TX=PA2\r\n",
+#if JETSON_USART2_DMA_TX && JETSON_USE_BLOB_V2
+#if JETSON_USART2_DMA_RX
+	printf("[JETSON HW] USART2 DMA+IDLE RX / DMA TX | CR1=0x%04X SR=0x%04X\r\n",
+#else
+	printf("[JETSON HW] USART2 byte-ISR RX / DMA TX | CR1=0x%04X SR=0x%04X\r\n",
+#endif
 		(unsigned int)USART2->CR1, (unsigned int)USART2->SR);
+#else
+	printf("[JETSON HW] USART2 CR1=0x%04X SR=0x%04X | Jetson TX->PA3(RX) MCU TX=PA2 (blocking TXE)\r\n",
+		(unsigned int)USART2->CR1, (unsigned int)USART2->SR);
+#endif
 }
 #endif
 
@@ -215,11 +338,13 @@ void USART3_Init(void)
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&NVIC_InitStructure);
 
-	// 启用 USART2 接收中断
-	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
-
-	// 启用USART2
 	USART_Cmd(USART2, ENABLE);
+
+#if JETSON_USART2_DMA_TX && JETSON_USE_BLOB_V2
+	USART3_DmaInit();
+#else
+	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
+#endif
 }
 #endif
 
@@ -241,10 +366,31 @@ void USART3_SendByte(u8 data)
 
 void USART3_SendData(u8* data, u16 len)
 {
+	if(!data || len == 0)
+		return;
+
+#if JETSON_USART2_DMA_TX && JETSON_USE_BLOB_V2
+	if(len > JETSON_TX_DMA_MAX)
+		len = JETSON_TX_DMA_MAX;
+
+	USART3_TxLock();
+	if(!s_tx_dma_busy)
+		USART3_TxDmaKick(data, len);
+	else
+	{
+		u16 i;
+		for(i = 0; i < len; i++)
+			s_tx_pend_buf[i] = data[i];
+		s_tx_pend_len = len;
+		s_tx_pend_valid = 1;
+	}
+	USART3_TxUnlock();
+#else
 	USART3_TxLock();
 	while(len--)
 		USART3_SendByte(*data++);
 	USART3_TxUnlock();
+#endif
 }
 
 void USART3_SendServiceFrame(u32 can_id, const u8 *payload, u8 len)
@@ -503,6 +649,31 @@ u8 USART3_GetServiceRequest(u32 *can_id, u8 *payload)
 *******************************************************************************/
 void USART2_IRQHandler(void)
 {
+#if JETSON_USART2_DMA_RX && JETSON_USE_BLOB_V2
+	u32 sr;
+	u16 n;
+
+	sr = USART2->SR;
+	if(sr & USART_SR_ORE)
+	{
+		s_usart2_ore_cnt++;
+		(void)USART2->DR;
+	}
+
+	if(USART_GetITStatus(USART2, USART_IT_IDLE) != RESET)
+	{
+		(void)USART2->SR;
+		(void)USART2->DR;
+
+		DMA_Cmd(DMA1_Stream5, DISABLE);
+		while(DMA1_Stream5->CR & DMA_SxCR_EN)
+			;
+		n = (u16)(JETSON_RX_DMA_SIZE - DMA_GetCurrDataCounter(DMA1_Stream5));
+		if(n > 0)
+			USART3_RxDmaFeed(n);
+		USART3_RxDmaRestart();
+	}
+#else
 	u8 byte;
 	u32 sr;
 
@@ -516,5 +687,32 @@ void USART2_IRQHandler(void)
 		s_usart2_rx_bytes++;
 		USART3_ProcessRxByte(byte);
 	}
+#endif
 }
+
+#if JETSON_USART2_DMA_TX && JETSON_USE_BLOB_V2
+void DMA1_Stream6_IRQHandler(void)
+{
+	u16 len;
+	u8 kick_buf[JETSON_TX_DMA_MAX];
+	u16 i;
+
+	if(DMA_GetITStatus(DMA1_Stream6, DMA_IT_TCIF6) == RESET)
+		return;
+
+	DMA_ClearITPendingBit(DMA1_Stream6, DMA_IT_TCIF6);
+	DMA_Cmd(DMA1_Stream6, DISABLE);
+
+	if(s_tx_pend_valid)
+	{
+		len = s_tx_pend_len;
+		for(i = 0; i < len; i++)
+			kick_buf[i] = s_tx_pend_buf[i];
+		s_tx_pend_valid = 0;
+		USART3_TxDmaKick(kick_buf, len);
+	}
+	else
+		s_tx_dma_busy = 0;
+}
+#endif
 #endif

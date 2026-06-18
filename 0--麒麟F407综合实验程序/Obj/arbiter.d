@@ -39,5 +39,16 @@
 .\obj\arbiter.o: .\APP\can\can.h
 .\obj\arbiter.o: .\Public\usart.h
 .\obj\arbiter.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\obj\arbiter.o: .\APP\freertos\rtos_config.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
+.\obj\arbiter.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\obj\arbiter.o: .\User\FreeRTOSConfig.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\include\projdefs.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\include\portable.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\include\deprecated_definitions.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F\portmacro.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\include\mpu_wrappers.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\include\task.h
+.\obj\arbiter.o: .\Middlewares\FreeRTOS\include\list.h
 .\obj\arbiter.o: .\Public\SysTick.h
 .\obj\arbiter.o: .\APP\time\time.h
