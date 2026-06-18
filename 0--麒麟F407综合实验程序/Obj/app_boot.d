@@ -66,3 +66,5 @@
 .\obj\app_boot.o: .\APP\lan8720\lan8720.h
 .\obj\app_boot.o: .\Libraries\STM32F4x7_ETH_Driver\inc\stm32f4x7_eth.h
 .\obj\app_boot.o: .\Libraries\STM32F4x7_ETH_Driver\inc\stm32f4x7_eth_conf.h
+.\obj\app_boot.o: .\APP\jetson_eth\jetson_eth.h
+.\obj\app_boot.o: .\APP\agv_blob\agv_blob_rs232.h

@@ -65,6 +65,7 @@
 ".\obj\can.o"
 ".\obj\can2.o"
 ".\obj\jetson_can.o"
+".\obj\jetson_eth.o"
 ".\obj\agv_blob_wire.o"
 ".\obj\agv_blob_rs232.o"
 ".\obj\agv_blob_pack.o"

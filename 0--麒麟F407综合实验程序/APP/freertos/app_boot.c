@@ -16,6 +16,7 @@
 #if ETH_LWIP_ENABLE
 #include "lwip_comm.h"
 #include "lan8720.h"
+#include "jetson_eth.h"
 #endif
 
 #if ETH_LWIP_ENABLE
@@ -41,9 +42,11 @@ void App_EthInit(void)
 		if(ret == 0)
 		{
 			s_eth_ready = 1;
-			printf("[ETH] lwIP OK  MCU IP %u.%u.%u.%u  mask 255.255.255.0  gw 192.168.10.200\r\n",
+			printf("[ETH] lwIP OK  MCU IP %u.%u.%u.%u  mask 255.255.255.0  peer %u.%u.%u.%u\r\n",
 				(unsigned)lwipdev.ip[0], (unsigned)lwipdev.ip[1],
-				(unsigned)lwipdev.ip[2], (unsigned)lwipdev.ip[3]);
+				(unsigned)lwipdev.ip[2], (unsigned)lwipdev.ip[3],
+				(unsigned)lwipdev.remoteip[0], (unsigned)lwipdev.remoteip[1],
+				(unsigned)lwipdev.remoteip[2], (unsigned)lwipdev.remoteip[3]);
 			printf("[ETH] mem1=%u%% mem2=%u%% after lwIP\r\n",
 				(unsigned)my_mem_perused(SRAMIN), (unsigned)my_mem_perused(SRAMEX));
 			if(LAN8720_LinkUp())
@@ -58,9 +61,7 @@ void App_EthInit(void)
 			printf("[ETH] MAC %02X:%02X:%02X:%02X:%02X:%02X\r\n",
 				lwipdev.mac[0], lwipdev.mac[1], lwipdev.mac[2],
 				lwipdev.mac[3], lwipdev.mac[4], lwipdev.mac[5]);
-			printf("[ETH] Peer(Jetson eno1) %u.%u.%u.%u, test: ping -I %u.%u.%u.%u %u.%u.%u.%u\r\n",
-				(unsigned)lwipdev.remoteip[0], (unsigned)lwipdev.remoteip[1],
-				(unsigned)lwipdev.remoteip[2], (unsigned)lwipdev.remoteip[3],
+			printf("[ETH] Peer(host) %u.%u.%u.%u, test: host ping %u.%u.%u.%u\r\n",
 				(unsigned)lwipdev.remoteip[0], (unsigned)lwipdev.remoteip[1],
 				(unsigned)lwipdev.remoteip[2], (unsigned)lwipdev.remoteip[3],
 				(unsigned)lwipdev.ip[0], (unsigned)lwipdev.ip[1],
@@ -73,6 +74,9 @@ void App_EthInit(void)
 			lwip_comm_gratuitous_arp();
 			printf("[ETH] gratuitous ARP sent, tx_ok=%lu\r\n",
 				(unsigned long)ETH_TxOkCount());
+#if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
+			JetsonEth_Init();
+#endif
 			return;
 		}
 		printf("[ETH] lwIP init failed code=%u retry %u/5 (1=mem 2=PHY 3=netif)\r\n",
@@ -89,15 +93,20 @@ void App_EthPoll(void)
 	if(!s_eth_ready)
 		return;
 
-	primask = __get_PRIMASK();
-	__disable_irq();
 #if ETH_RX_POLL_ONLY
+	/* 每帧单独进出临界区，避免长时间 __disable_irq 丢 USART3 测距字节 */
 	while(ETH_GetRxPktSize(DMARxDescToGet) != 0)
 	{
+		primask = __get_PRIMASK();
+		__disable_irq();
 		lwip_pkt_handle();
+		if(!primask)
+			__enable_irq();
 		s_eth_rx_frames++;
 	}
 #endif
+	primask = __get_PRIMASK();
+	__disable_irq();
 	ETH_RecoverRxDma();
 	lwip_periodic_handle();
 	if(!primask)
@@ -123,11 +132,24 @@ void App_MotionHwInit(void)
 	/* PRECHIN 在 Hardware_Check 里开了 TIM2(100ms) 拍照中断，ISR 内 KEY_Scan+delay_ms 与 KeyTask 冲突 */
 	TIM_Cmd(TIM2, DISABLE);
 	TIM_ITConfig(TIM2, TIM_IT_Update, DISABLE);
+
+#if APP_SENSOR_TEST_ONLY
+	printf("[BOOT] SENSOR_TEST_ONLY: ETH/GPS/CAN/Jetson/Arbiter OFF\r\n");
+	printf("[BOOT] TIM4 20ms trigger + USART3 PB10(trig)/PB11(RX) 9600\r\n");
+	DistanceSensor_Init();
+	printf("[BOOT] Wait [DS TEST] every 2s: proc_tick should grow, uart_rx>0 if module OK\r\n");
+	return;
+#endif
+
 #if JETSON_LINK_CAN
 	JetsonCAN_Init();
 #else
+#if ETH_LWIP_ENABLE && JETSON_USE_BLOB_V2
+	/* 以太网模式：不 init USART2(PA2/PA3)，PA2 留给 ETH_MDIO */
+#else
 	USART3_Init();
 	USART3_PrintHwDiag();
+#endif
 	JetsonCAN_Init();
 #endif
 	
@@ -143,7 +165,12 @@ void App_MotionHwInit(void)
 	printf("[JETSON] Wire PB6->TJA1050 TXD, PB5<-RXD, CANH/L to Jetson USB-CAN\r\n");
 #else
 #if JETSON_USE_BLOB_V2
+#if ETH_LWIP_ENABLE
+	printf("[JETSON] Ethernet UDP BLOB v2 down:%u up_peer:%u (0xAB)\r\n",
+		(unsigned)JETSON_ETH_PORT_DOWN, (unsigned)JETSON_ETH_PORT_UP);
+#else
 	printf("[JETSON] USART2 PA2/PA3, 115200, BLOB v2 (0xAB) down/up + 0xA5 svc\r\n");
+#endif
 #else
 	printf("[JETSON] USART2 PA2/PA3, 115200, V3 24-byte (0xAA) frame\r\n");
 #endif

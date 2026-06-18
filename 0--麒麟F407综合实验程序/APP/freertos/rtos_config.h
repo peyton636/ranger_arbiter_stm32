@@ -12,7 +12,7 @@
 #define RTOS_VERBOSE_CHASSIS_LOG   0   /* [WHEEL][CMDOUT][MOTION][PWR][SAFE] */
 #endif
 #ifndef RTOS_VERBOSE_SENSOR_LOG
-#define RTOS_VERBOSE_SENSOR_LOG    0   /* [DS] IF1~4 */
+#define RTOS_VERBOSE_SENSOR_LOG    1   /* [DS] IF1~4 + Filt F/B/L/R */
 #endif
 #ifndef RTOS_VERBOSE_GPS_LOG
 #define RTOS_VERBOSE_GPS_LOG       0   /* [GPS] 周期状态 */

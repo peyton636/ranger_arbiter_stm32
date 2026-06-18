@@ -20,7 +20,10 @@
 #include "agv_blob_wire.h"
 #if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
 #include "agv_blob_pack.h"
-#include "agv_blob_rs232.h"
+#include "agv_blob_link.h"
+#if JETSON_LINK_ETH
+#include "jetson_eth.h"
+#endif
 #endif
 #include "FreeRTOS.h"
 #include "task.h"
@@ -48,32 +51,57 @@ static u32 s_link_last_ab = 0;
 static u32 s_link_last_tx_b = 0;
 static u32 s_link_last_m02 = 0;
 static u32 s_link_last_m03 = 0;
+#if JETSON_LINK_ETH
+static u32 s_link_last_svc_rx = 0;
+static u32 s_link_last_svc_107 = 0;
+static u32 s_link_last_svc_tx108 = 0;
+static u32 s_link_last_svc_rej = 0;
+#endif
 
 /* 在 vGpsTask 定时打印，不依赖 vJetsonTask 循环计数 */
 static void JetsonLink_TickEvery5s(void)
 {
-	u32 rx_b, ore, ab;
+	u32 rx_b = 0, ore = 0, ab = 0;
 	u32 tx_b, tx_f, tx_m02, tx_m03;
-	u32 ctrl, db, dab, dtx, dm02, dm03;
+	u32 ctrl, db = 0, dab = 0, dtx, dm02, dm03;
+	u16 ds_f, ds_b, ds_l, ds_r, ds_n;
 	u8 arb, hb_lost;
+#if JETSON_LINK_ETH
+	u32 svc_rx, svc_107, svc_tx108, svc_rej;
+	u32 dsvc, d107, dtx108, drej;
+#endif
 
 	if(++s_gps_link_div < 50)
 		return;
 	s_gps_link_div = 0;
 
+#if JETSON_LINK_ETH
+	JetsonEth_GetSvcStats(&svc_rx, &svc_107, &svc_tx108, &svc_rej);
+	dsvc = svc_rx - s_link_last_svc_rx;
+	d107 = svc_107 - s_link_last_svc_107;
+	dtx108 = svc_tx108 - s_link_last_svc_tx108;
+	drej = svc_rej - s_link_last_svc_rej;
+	s_link_last_svc_rx = svc_rx;
+	s_link_last_svc_107 = svc_107;
+	s_link_last_svc_tx108 = svc_tx108;
+	s_link_last_svc_rej = svc_rej;
+#else
 	USART3_GetRxStats(&rx_b, &ore, &ab);
-	BlobRs232_GetTxStats(&tx_b, &tx_f, &tx_m02, &tx_m03);
-	ctrl = BlobPack_GetRxCtrlCount();
 	db = rx_b - s_link_last_rx_b;
 	dab = ab - s_link_last_ab;
+	s_link_last_rx_b = rx_b;
+	s_link_last_ab = ab;
+#endif
+	BlobLink_GetTxStats(&tx_b, &tx_f, &tx_m02, &tx_m03);
+	ctrl = BlobPack_GetRxCtrlCount();
 	dtx = tx_b - s_link_last_tx_b;
 	dm02 = tx_m02 - s_link_last_m02;
 	dm03 = tx_m03 - s_link_last_m03;
-	s_link_last_rx_b = rx_b;
-	s_link_last_ab = ab;
 	s_link_last_tx_b = tx_b;
 	s_link_last_m02 = tx_m02;
 	s_link_last_m03 = tx_m03;
+
+	DistSnapshot_Read(&ds_f, &ds_b, &ds_l, &ds_r, &ds_n);
 
 	App_ArbiterLock();
 	arb = (u8)arb_state.current_mode;
@@ -82,14 +110,26 @@ static void JetsonLink_TickEvery5s(void)
 	if(arb > ARBITER_MODE_RECOVERING)
 		arb = ARBITER_MODE_DEGRADED;
 
-	printf("[JETSON LINK] +5s: dn=%luB ab=%lu ctrl=%lu rej=%lu ore=%lu | up=%luB 0x02=%lu 0x03=%lu ARB=%s HB=%s\r\n",
+#if JETSON_LINK_ETH
+	printf("[JETSON LINK] +5s: ctrl=%lu rej=%lu | up=%luB 0x02=%lu 0x03=%lu | svc=%lu 107=%lu tx108=%lu svc_rej=%lu | DS F=%u B=%u L=%u R=%u near=%u ARB=%s HB=%s\r\n",
+		(unsigned long)ctrl,
+		(unsigned long)JetsonEth_GetRxDropCount(),
+		(unsigned long)dtx, (unsigned long)dm02, (unsigned long)dm03,
+		(unsigned long)dsvc, (unsigned long)d107, (unsigned long)dtx108, (unsigned long)drej,
+		(unsigned)ds_f, (unsigned)ds_b, (unsigned)ds_l, (unsigned)ds_r, (unsigned)ds_n,
+		ARBITER_MODE_NAMES[arb],
+		hb_lost ? "LOST" : "OK");
+#else
+	printf("[JETSON LINK] +5s: dn=%luB ab=%lu ctrl=%lu rej=%lu ore=%lu | up=%luB 0x02=%lu 0x03=%lu | DS F=%u B=%u L=%u R=%u near=%u ARB=%s HB=%s\r\n",
 		(unsigned long)db, (unsigned long)dab,
 		(unsigned long)ctrl,
 		(unsigned long)BlobRs232_GetHdrRejectCount(),
 		(unsigned long)ore,
 		(unsigned long)dtx, (unsigned long)dm02, (unsigned long)dm03,
+		(unsigned)ds_f, (unsigned)ds_b, (unsigned)ds_l, (unsigned)ds_r, (unsigned)ds_n,
 		ARBITER_MODE_NAMES[arb],
 		hb_lost ? "LOST" : "OK");
+#endif
 }
 #endif
 
@@ -154,12 +194,17 @@ void vSensorTask(void *pvParameters)
 	TickType_t xLastWakeTime = xTaskGetTickCount();
 	DistanceSensor_Data *ds;
 	u16 f, b, l, r, n;
+#if ETH_LWIP_ENABLE || APP_SENSOR_TEST_ONLY
+	u16 ds_diag_log_div = 0;
+#endif
 
 	(void)pvParameters;
 
 	for(;;)
 	{
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(SENSOR_TASK_CYCLE_MS));
+
+		DistanceSensor_PollRx();
 
 		ds = DistanceSensor_GetData();
 		if(DistanceSensor_NewData() && ds->valid)
@@ -182,6 +227,42 @@ void vSensorTask(void *pvParameters)
 			g_sensor_updated = 1;
 			MotionUI_NotifySensorFrame();
 		}
+
+#if ETH_LWIP_ENABLE || APP_SENSOR_TEST_ONLY
+		/* 每 2s 打印测距诊断（独占测试 / 以太网联调共用） */
+		if(++ds_diag_log_div >= 200)
+		{
+			char ff[16], bb[16], ll[16], rr[16];
+			u32 ds_rx, ds_ok, ds_proc, ds_trig, ds_poll;
+			u32 ds_skip, ds_hdr, ds_chk;
+			char rxhex[40];
+
+			ds_diag_log_div = 0;
+			DistSnapshot_Read(&f, &b, &l, &r, &n);
+			DistanceSensor_GetDiag(&ds_rx, &ds_ok);
+			ds_proc = DistanceSensor_GetProcessTick();
+			ds_trig = DistanceSensor_GetTrigCount();
+			ds_poll = DistanceSensor_GetPollRxBytes();
+			DistanceSensor_GetRxParseDiag(&ds_skip, &ds_hdr, &ds_chk);
+			DistanceSensor_FormatLastRxHex(rxhex, sizeof(rxhex));
+			DistanceSensor_FormatFilteredLane(0, ff, sizeof(ff));
+			DistanceSensor_FormatFilteredLane(1, bb, sizeof(bb));
+			DistanceSensor_FormatFilteredLane(2, ll, sizeof(ll));
+			DistanceSensor_FormatFilteredLane(3, rr, sizeof(rr));
+#if APP_SENSOR_TEST_ONLY
+			printf("[DS TEST] F=%s B=%s L=%s R=%s near=%u valid=%u proc=%lu trig=%lu rx=%lu ok=%lu skip=%lu FF=%lu chk=%lu raw=%s\r\n",
+				ff, bb, ll, rr, (unsigned)n, (unsigned)(ds->valid ? 1u : 0u),
+				(unsigned long)ds_proc, (unsigned long)ds_trig,
+				(unsigned long)ds_rx, (unsigned long)ds_ok,
+				(unsigned long)ds_skip, (unsigned long)ds_hdr, (unsigned long)ds_chk,
+				rxhex);
+#else
+			printf("[DS ETH] F=%s B=%s L=%s R=%s near=%u valid=%u uart_rx=%lu frame_ok=%lu\r\n",
+				ff, bb, ll, rr, (unsigned)n, (unsigned)(ds->valid ? 1u : 0u),
+				(unsigned long)ds_rx, (unsigned long)ds_ok);
+#endif
+		}
+#endif
 	}
 }
 
@@ -214,6 +295,14 @@ void vJetsonTask(void *pvParameters)
 
 #if JETSON_LINK_CAN
 		JetsonCAN_ProcessRx(&arb_state, n);
+#elif JETSON_LINK_ETH
+		{
+			u32 svc_id;
+			u8 svc_buf[8];
+
+			while(JetsonEth_GetServiceRequest(&svc_id, svc_buf))
+				JetsonCAN_HandleServiceRequest(svc_id, svc_buf, 8, &arb_state, n);
+		}
 #else
 		{
 			u32 svc_id;
@@ -230,7 +319,7 @@ void vJetsonTask(void *pvParameters)
 		{
 			blob_rx_frame_t blob_frame;
 
-			while(BlobRs232_GetFrame(&blob_frame))
+			while(BlobLink_GetFrame(&blob_frame))
 				BlobPack_HandleDownlink(&blob_frame);
 		}
 #endif
@@ -361,16 +450,17 @@ void vUiTask(void *pvParameters)
 			g_force_stop_ui_dirty = 0;
 		}
 
-		/* ?? RTOS ? SensorData_ShowScreen ????????????????????????/???? */
+		/* 与 RTOS 前 SensorData_ShowScreen 不同：仲裁模式由 vUiTask 刷新测距/GPS */
 		if(g_sensor_updated)
 		{
 			s_ui_frame_count++;
 #if RTOS_VERBOSE_SENSOR_LOG
 			DistanceSensor_Print();
 #endif
+			if(!g_sensor_ui_inited)
+				SensorUI_DrawStatic();
 			SensorUI_UpdateCount(s_ui_frame_count);
-			if(g_sensor_ui_inited)
-				SensorUI_UpdateDistances(ds);
+			SensorUI_UpdateDistances(ds);
 			g_sensor_updated = 0;
 		}
 

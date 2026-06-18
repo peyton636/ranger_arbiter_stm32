@@ -42,6 +42,10 @@
 .\obj\jetson_can.o: .\APP\distance_sensor\distance_sensor.h
 .\obj\jetson_can.o: .\APP\beep\beep.h
 .\obj\jetson_can.o: .\APP\usart3\usart3.h
+.\obj\jetson_can.o: .\APP\jetson_eth\jetson_eth.h
+.\obj\jetson_can.o: .\APP\freertos\app_boot.h
+.\obj\jetson_can.o: .\APP\agv_blob\agv_blob_rs232.h
+.\obj\jetson_can.o: .\APP\agv_blob\agv_blob_wire.h
 .\obj\jetson_can.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
 .\obj\jetson_can.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
 .\obj\jetson_can.o: .\User\FreeRTOSConfig.h

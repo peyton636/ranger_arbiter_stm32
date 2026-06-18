@@ -2,6 +2,7 @@
 
 #if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
 
+#include "agv_blob_link.h"
 #include "beep.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -233,7 +234,7 @@ static u8 BlobPack_SendMotion(const ArbiterState_t *state)
 	p[38] = 0;
 	p[39] = 0;
 
-	return BlobRs232_Send(BLOB_MSG_MOTION, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTION);
+	return BlobLink_Send(BLOB_MSG_MOTION, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTION);
 }
 
 static u8 BlobPack_SendSensor(u16 f, u16 b, u16 l, u16 r)
@@ -251,7 +252,7 @@ static u8 BlobPack_SendSensor(u16 f, u16 b, u16 l, u16 r)
 	BlobPack_PutU32BE(p, 20, ts);
 	BlobPack_PutU32BE(p, 24, ts);
 
-	return BlobRs232_Send(BLOB_MSG_SENSOR, s_blob_tx_seq++, p, BLOB_PAYLOAD_SENSOR);
+	return BlobLink_Send(BLOB_MSG_SENSOR, s_blob_tx_seq++, p, BLOB_PAYLOAD_SENSOR);
 }
 
 static u8 BlobPack_SendMcuStatus(const ArbiterState_t *state,
@@ -283,7 +284,7 @@ static u8 BlobPack_SendMcuStatus(const ArbiterState_t *state,
 	p[40] = state->last_jetson_seq;
 	p[41] = 0;
 
-	return BlobRs232_Send(BLOB_MSG_MCU_STATUS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MCU_STATUS);
+	return BlobLink_Send(BLOB_MSG_MCU_STATUS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MCU_STATUS);
 }
 
 static void BlobPack_PackMotorCompact(u8 *dst, const ArbiterState_t *state, u8 motor_idx)
@@ -306,7 +307,7 @@ static u8 BlobPack_SendMotorBlock(u8 msg_id, u8 base_motor)
 	for(i = 0; i < 4; i++)
 		BlobPack_PackMotorCompact(&p[4 + i * 10], &arb_state, (u8)(base_motor + i));
 
-	return BlobRs232_Send(msg_id, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR04);
+	return BlobLink_Send(msg_id, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR04);
 }
 
 static u8 BlobPack_SendEnergy(const ArbiterState_t *state)
@@ -341,7 +342,7 @@ static u8 BlobPack_SendEnergy(const ArbiterState_t *state)
 	p[39] = 0;
 	p[40] = 0;
 
-	return BlobRs232_Send(BLOB_MSG_ENERGY, s_blob_tx_seq++, p, BLOB_PAYLOAD_ENERGY);
+	return BlobLink_Send(BLOB_MSG_ENERGY, s_blob_tx_seq++, p, BLOB_PAYLOAD_ENERGY);
 }
 
 static u8 BlobPack_SendMotorPos(const ArbiterState_t *state)
@@ -357,7 +358,7 @@ static u8 BlobPack_SendMotorPos(const ArbiterState_t *state)
 	for(i = 0; i < 8; i++)
 		BlobPack_PutS32BE(p, (u16)(4 + i * 4), state->motor_high[i].position);
 
-	return BlobRs232_Send(BLOB_MSG_MOTOR_POS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR_POS);
+	return BlobLink_Send(BLOB_MSG_MOTOR_POS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR_POS);
 }
 
 void BlobPack_HandleDownlink(const blob_rx_frame_t *frame)
@@ -465,21 +466,27 @@ void BlobPack_UplinkTick(const ArbiterState_t *state,
 {
 	s_uplink_div++;
 
-	/* 心跳丢失时也保持 0x02/0x03，便于 gateway 300ms 内看到上行 */
+	/* 心跳丢失时也保持 0x02/0x03/0x04，便于 gateway 与本地调试 */
 	if(state->heartbeat_lost)
 	{
 		BlobPack_SendMotion(state);
 		if((s_uplink_div % 2u) == 0u)
 			BlobPack_SendMcuStatus(state, sonar_f, sonar_b, sonar_l, sonar_r, nearest_mm);
+		if((s_uplink_div % 4u) == 0u)
+			BlobPack_SendSensor(sonar_f, sonar_b, sonar_l, sonar_r);
 		return;
 	}
 
 #if BLOB_UPLINK_MINIMAL
-	/* 联调档位：必保 0x02+0x03@50Hz（gateway 看门狗），其余降频 */
+	/* 联调档位：必保 0x02+0x03@50Hz；0x04 每 40ms（以太网）或 80ms */
 	BlobPack_SendMotion(state);
 	BlobPack_SendMcuStatus(state, sonar_f, sonar_b, sonar_l, sonar_r, nearest_mm);
 
+#if JETSON_LINK_ETH
+	if((s_uplink_div % 2u) == 0u)
+#else
 	if((s_uplink_div % 4u) == 0u)
+#endif
 		BlobPack_SendSensor(sonar_f, sonar_b, sonar_l, sonar_r);
 
 	if((s_uplink_div % 8u) == 0u)
@@ -599,7 +606,7 @@ void BlobPack_SendGps(const GPS_Data_t *gps)
 	p[30] = 0;
 	p[31] = 0;
 
-	BlobRs232_Send(BLOB_MSG_GPS, s_blob_tx_seq++, p, BLOB_PAYLOAD_GPS);
+	BlobLink_Send(BLOB_MSG_GPS, s_blob_tx_seq++, p, BLOB_PAYLOAD_GPS);
 }
 
 #endif

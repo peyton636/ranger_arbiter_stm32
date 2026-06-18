@@ -26,9 +26,132 @@ typedef struct
 
 static DsChannelFilter_t ds_filter[4];
 static volatile u8 ds_log_rx_timeout = 0;
+static volatile u32 s_ds_rx_bytes = 0;
+static volatile u32 s_ds_frame_ok = 0;
+static volatile u32 s_ds_trig_count = 0;
+static volatile u32 s_ds_poll_rx = 0;
+static volatile u32 s_ds_uart_err = 0;
+static volatile u32 s_ds_sync_skip = 0;
+static volatile u32 s_ds_hdr_ok = 0;
+static volatile u32 s_ds_chk_fail = 0;
+static u8 s_last_rx[12];
+static u8 s_last_rx_n = 0;
 static u8 ds_boot_fast_remain = DS_BOOT_FAST_TRIG_COUNT;
 static u8 ds_first_trig_done = 0;
 static u8 ds_timeout_streak[4];
+
+static void DistanceSensor_ClassifyRaw(u16 raw, u8 *err, u16 *store_mm);
+
+static void DistanceSensor_RawPush(u8 byte)
+{
+	if(s_last_rx_n < sizeof(s_last_rx))
+		s_last_rx[s_last_rx_n++] = byte;
+	else
+	{
+		u8 i;
+		for(i = 0; i < sizeof(s_last_rx) - 1u; i++)
+			s_last_rx[i] = s_last_rx[i + 1u];
+		s_last_rx[sizeof(s_last_rx) - 1u] = byte;
+	}
+}
+
+static void DistanceSensor_OnRxByte(u8 byte)
+{
+	u16 sum;
+	u8 i;
+
+	s_ds_rx_bytes++;
+	ds_rx_idle_cnt = 0;
+	DistanceSensor_RawPush(byte);
+
+	if(ds_rx_idx == 0)
+	{
+		if(byte == DS_HEADER)
+		{
+			s_ds_hdr_ok++;
+			ds_rx_buf[0] = byte;
+			ds_rx_idx = 1;
+		}
+		else
+		{
+			s_ds_sync_skip++;
+		}
+	}
+	else
+	{
+		ds_rx_buf[ds_rx_idx] = byte;
+		ds_rx_idx++;
+
+		if(ds_rx_idx >= DS_FRAME_LEN)
+		{
+			sum = 0;
+			for(i = 0; i < DS_FRAME_LEN - 1; i++)
+				sum += ds_rx_buf[i];
+
+			if((sum & 0xFF) == ds_rx_buf[DS_FRAME_LEN - 1])
+			{
+				ds_data.valid = 1;
+				s_ds_frame_ok++;
+				for(i = 0; i < 4; i++)
+				{
+					u16 raw = (ds_rx_buf[1 + i * 2] << 8) | ds_rx_buf[2 + i * 2];
+					DistanceSensor_ClassifyRaw(raw, &ds_data.error[i], &ds_data.dist[i]);
+				}
+				ds_frame_ready = 1;
+			}
+			else
+			{
+				s_ds_chk_fail++;
+			}
+			ds_rx_idx = 0;
+		}
+	}
+}
+
+static void DistanceSensor_UartClearErrors(void)
+{
+	u32 sr;
+
+	sr = USART3->SR;
+	if(sr & (USART_SR_ORE | USART_SR_NE | USART_SR_FE | USART_SR_PE))
+	{
+		s_ds_uart_err++;
+		(void)USART3->DR;
+	}
+}
+
+void DistanceSensor_PollRx(void)
+{
+	u32 primask;
+
+	primask = __get_PRIMASK();
+	__disable_irq();
+	while(USART_GetFlagStatus(USART3, USART_FLAG_RXNE) != RESET)
+	{
+		s_ds_poll_rx++;
+		DistanceSensor_OnRxByte((u8)USART_ReceiveData(USART3));
+	}
+	DistanceSensor_UartClearErrors();
+	if(!primask)
+		__enable_irq();
+}
+
+void DistanceSensor_PrintHwDiag(void)
+{
+	u32 moder, afrl;
+
+	moder = GPIOB->MODER;
+	afrl = GPIOB->AFR[1]; /* PB8~PB15 */
+	printf("[DS] HW USART3 UE=%u RXNE_IE=%u SR=0x%04lX\r\n",
+		(unsigned)((USART3->CR1 & USART_CR1_UE) ? 1u : 0u),
+		(unsigned)((USART3->CR1 & USART_CR1_RXNEIE) ? 1u : 0u),
+		(unsigned long)USART3->SR);
+	printf("[DS] HW PB10 MOD=%lu AF10=%lu | PB11 MOD=%lu AF11=%lu\r\n",
+		(unsigned long)((moder >> 20) & 3u),
+		(unsigned long)((afrl >> 8) & 0xFu),
+		(unsigned long)((moder >> 22) & 3u),
+		(unsigned long)((afrl >> 12) & 0xFu));
+}
 
 /* 原始 16bit 距离 → error 标记 + 归一化存储值 */
 static void DistanceSensor_ClassifyRaw(u16 raw, u8 *err, u16 *store_mm)
@@ -317,12 +440,14 @@ void DistanceSensor_Init(void)
 		ds_timeout_streak[i] = 0;
 	DistanceSensor_FilterReset();
 
-	printf("[DS] Init OK, trig: boot %ux%dms then %ums, valid 30~%u TO>=%u\r\n",
+	printf("[DS] Init OK, trig: boot %ux%dms then %ums, hold=%ums, valid 30~%u TO>=%u\r\n",
 		(unsigned)DS_BOOT_FAST_TRIG_COUNT,
 		(unsigned)(DS_BOOT_FAST_TRIG_TICKS * DS_PROCESS_MS),
 		(unsigned)DS_TRIG_INTERVAL_MS,
+		(unsigned)(DS_TRIG_HOLD_TICKS * DS_PROCESS_MS),
 		(unsigned)DS_DIST_VALID_MAX_MM,
 		(unsigned)DS_DIST_MOD_TIMEOUT_MIN);
+	DistanceSensor_PrintHwDiag();
 }
 
 void DistanceSensor_Process(void)
@@ -331,6 +456,7 @@ void DistanceSensor_Process(void)
 	static u32 tick = 0;
 	static u8 trig_pending = 0;
 	static u8 trig_armed = 0;
+	static u8 trig_low_ticks = 0;
 
 	ds_process_tick++;
 	tick++;
@@ -355,10 +481,28 @@ void DistanceSensor_Process(void)
 		trig_armed = 1;
 	}
 
-	if(trig_armed && !trig_pending && ds_rx_idx == 0)
+	if(trig_low_ticks > 0)
+	{
+		trig_low_ticks--;
+		if(trig_low_ticks == 0)
+		{
+			GPIO_PinAFConfig(GPIOB, GPIO_PinSource10, GPIO_AF_USART3);
+			gpio.GPIO_Pin = GPIO_Pin_10;
+			gpio.GPIO_Mode = GPIO_Mode_AF;
+			gpio.GPIO_OType = GPIO_OType_PP;
+			gpio.GPIO_Speed = GPIO_Speed_50MHz;
+			gpio.GPIO_PuPd = GPIO_PuPd_UP;
+			GPIO_Init(GPIOB, &gpio);
+			trig_pending = 0;
+			DistanceSensor_UartClearErrors();
+			USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+		}
+	}
+	else if(trig_armed && !trig_pending && ds_rx_idx == 0)
 	{
 		trig_armed = 0;
 		ds_rx_idle_cnt = 0;
+		s_ds_trig_count++;
 		USART_ITConfig(USART3, USART_IT_RXNE, DISABLE);
 		gpio.GPIO_Pin = GPIO_Pin_10;
 		gpio.GPIO_Mode = GPIO_Mode_OUT;
@@ -368,18 +512,7 @@ void DistanceSensor_Process(void)
 		GPIO_Init(GPIOB, &gpio);
 		GPIO_ResetBits(GPIOB, GPIO_Pin_10);
 		trig_pending = 1;
-	}
-	else if(trig_pending)
-	{
-		GPIO_PinAFConfig(GPIOB, GPIO_PinSource10, GPIO_AF_USART3);
-		gpio.GPIO_Pin = GPIO_Pin_10;
-		gpio.GPIO_Mode = GPIO_Mode_AF;
-		gpio.GPIO_OType = GPIO_OType_PP;
-		gpio.GPIO_Speed = GPIO_Speed_50MHz;
-		gpio.GPIO_PuPd = GPIO_PuPd_UP;
-		GPIO_Init(GPIOB, &gpio);
-		trig_pending = 0;
-		USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+		trig_low_ticks = DS_TRIG_HOLD_TICKS;
 	}
 
 	// 接收超时（与模组默认 200ms 一致）
@@ -397,49 +530,9 @@ void DistanceSensor_Process(void)
 // UART3 中断服务函数 - 实时接收传感器数据
 void USART3_IRQHandler(void)
 {
-	u8 byte;
-	u16 sum;
-	u8 i;
-
 	if(USART_GetITStatus(USART3, USART_IT_RXNE) != RESET)
 	{
-		byte = USART_ReceiveData(USART3);
-		ds_rx_idle_cnt = 0;
-
-		if(ds_rx_idx == 0)
-		{
-			if(byte == DS_HEADER)
-			{
-				ds_rx_buf[0] = byte;
-				ds_rx_idx = 1;
-			}
-		}
-		else
-		{
-			ds_rx_buf[ds_rx_idx] = byte;
-			ds_rx_idx++;
-
-			if(ds_rx_idx >= DS_FRAME_LEN)
-			{
-				sum = 0;
-				for(i = 0; i < DS_FRAME_LEN - 1; i++)
-				{
-					sum += ds_rx_buf[i];
-				}
-
-				if((sum & 0xFF) == ds_rx_buf[DS_FRAME_LEN - 1])
-				{
-					ds_data.valid = 1;
-					for(i = 0; i < 4; i++)
-					{
-						u16 raw = (ds_rx_buf[1 + i * 2] << 8) | ds_rx_buf[2 + i * 2];
-						DistanceSensor_ClassifyRaw(raw, &ds_data.error[i], &ds_data.dist[i]);
-					}
-					ds_frame_ready = 1;
-				}
-				ds_rx_idx = 0;
-			}
-		}
+		DistanceSensor_OnRxByte((u8)USART_ReceiveData(USART3));
 		USART_ClearITPendingBit(USART3, USART_IT_RXNE);
 	}
 }
@@ -468,8 +561,55 @@ void DistanceSensor_DrainLog(void)
 	{
 		char ts[20];
 		Log_TsPrefix(ts, sizeof(ts));
-		printf("%s[DS] RX timeout, reset\r\n", ts);
+		printf("%s[DS] RX timeout, reset (rx_bytes=%lu valid=%u)\r\n",
+			ts, (unsigned long)s_ds_rx_bytes, (unsigned)(ds_data.valid ? 1u : 0u));
 	}
+}
+
+void DistanceSensor_GetDiag(u32 *rx_bytes, u32 *frame_ok)
+{
+	if(rx_bytes)
+		*rx_bytes = s_ds_rx_bytes;
+	if(frame_ok)
+		*frame_ok = s_ds_frame_ok;
+}
+
+u32 DistanceSensor_GetProcessTick(void)
+{
+	return ds_process_tick;
+}
+
+u32 DistanceSensor_GetTrigCount(void)
+{
+	return s_ds_trig_count;
+}
+
+u32 DistanceSensor_GetPollRxBytes(void)
+{
+	return s_ds_poll_rx;
+}
+
+void DistanceSensor_GetRxParseDiag(u32 *sync_skip, u32 *hdr_ok, u32 *chk_fail)
+{
+	if(sync_skip)
+		*sync_skip = s_ds_sync_skip;
+	if(hdr_ok)
+		*hdr_ok = s_ds_hdr_ok;
+	if(chk_fail)
+		*chk_fail = s_ds_chk_fail;
+}
+
+void DistanceSensor_FormatLastRxHex(char *buf, u16 buf_sz)
+{
+	u8 i;
+	u16 pos = 0;
+
+	if(!buf || buf_sz < 4)
+		return;
+	for(i = 0; i < s_last_rx_n && pos + 3 < buf_sz; i++)
+		pos += (u16)snprintf(buf + pos, buf_sz - pos, "%02X ", (unsigned)s_last_rx[i]);
+	if(pos == 0)
+		snprintf(buf, buf_sz, "(none)");
 }
 
 void DistanceSensor_FormatLane(u8 idx, char *buf, u16 buf_sz)

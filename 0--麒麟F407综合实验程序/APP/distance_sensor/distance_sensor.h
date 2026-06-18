@@ -47,6 +47,8 @@
 #define DS_FILTER_MAX_STEP_MM     2000u /* 真实运动允许较大单帧变化 */
 #define DS_RX_TIMEOUT_MS          280u
 #define DS_RX_TIMEOUT_TICKS       (DS_RX_TIMEOUT_MS / DS_PROCESS_MS)
+/* PB10 触发低电平保持 tick 数（20ms/tick；E08 要求 ≥20ms，实测建议 60ms） */
+#define DS_TRIG_HOLD_TICKS        3u
 
 typedef struct {
 	u16 dist[4];
@@ -67,6 +69,14 @@ u16 DistanceSensor_GetFilteredMm(u8 idx);
 u16 DistanceSensor_GetFilteredMinDistMm(void);
 u16 DistanceSensor_GetArbiterMm(u8 idx);
 void DistanceSensor_DrainLog(void);
+void DistanceSensor_GetDiag(u32 *rx_bytes, u32 *frame_ok);
+u32  DistanceSensor_GetProcessTick(void);
+u32  DistanceSensor_GetTrigCount(void);
+u32  DistanceSensor_GetPollRxBytes(void);
+void DistanceSensor_GetRxParseDiag(u32 *sync_skip, u32 *hdr_ok, u32 *chk_fail);
+void DistanceSensor_FormatLastRxHex(char *buf, u16 buf_sz);
+void DistanceSensor_PrintHwDiag(void);
+void DistanceSensor_PollRx(void);
 void DistanceSensor_UpdateBuzzer(void);
 /* 统一显示：---/TO/ERR/0/N mm，LCD 与串口共用 */
 void DistanceSensor_FormatLane(u8 idx, char *buf, u16 buf_sz);

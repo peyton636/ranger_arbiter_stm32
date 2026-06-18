@@ -121,6 +121,7 @@ u8 LAN8720_LinkUp(void)
 	return (bmsr & 0x0004u) ? 1u : 0u;
 }
 
+
 void ETH_RecoverRxDma(void)
 {
 	if((ETH->DMASR & ETH_DMASR_RBUS) != (u32)RESET)

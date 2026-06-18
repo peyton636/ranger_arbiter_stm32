@@ -2,10 +2,12 @@
 
 | 元数据 | 值 |
 |--------|-----|
-| **文档版本** | v1.2 |
-| **文档日期** | 2026-06-16 |
-| **状态** | lwIP 已接入、PHY/DMA 初始化正常；**ping 联调未通（L2 层）**，应用层 UDP/BLOB 未接；**当前优先 RS232** |
+| **文档版本** | v1.6 |
+| **文档日期** | 2026-06-17 |
+| **状态** | **L3 ping 已通**；**UDP+BLOB v2 上行已通**；**UDP 0xA5 TimeSync 已合入**；测距供电见 **§15.11** |
 | **适用固件** | 麒麟 F407 综合实验程序，`UI_TEST_MODE=1` 仲裁模式 |
+
+> **资源冲突（引脚/串口/中断/网络）必读：[§15](#15-资源冲突与解决办法必读)**
 
 本文档描述 **上位机 ↔ F407** 经 **网线直连** 与 **WiFi + 网页** 两种网络控制的**整体流程、架构分层与实施步骤**。
 
@@ -14,7 +16,8 @@
 | [硬件连接与通信协议.md](./硬件连接与通信协议.md) | CAN / RS232 接线与系统拓扑 |
 | [Jetson_CAN协议.md](./Jetson_CAN协议.md) | V3 应用层帧定义（以太网/WiFi 建议复用） |
 | [Jetson_RS232协议.md](./Jetson_RS232协议.md) | RS232 传输封装（与 CAN 应用层一致） |
-| [Jetson_BLOB协议_v2.md](./Jetson_BLOB协议_v2.md) | BLOB v2 二进制协议（RS232/CAN 双传输，当前 RS232 联调主文档） |
+| [Jetson_BLOB协议_v2.md](./Jetson_BLOB协议_v2.md) | BLOB v2 二进制协议（RS232/CAN/以太网 UDP 共用应用层） |
+| [测距传感器数据流.md](./测距传感器数据流.md) | USART3 测距触发/收帧（与以太网无引脚冲突，见 §15.4） |
 | [rtos移植.md](./rtos移植.md) | 内存规划（含后续 WiFi 缓冲约定） |
 
 ---
@@ -54,7 +57,7 @@
 |------|------|----------|
 | PHY 芯片 | **LAN8720**，板载 RJ45 | `APP/lan8720/` |
 | TCP/IP 协议栈 | **LwIP 1.4.1**（TCP/UDP/ICMP） | `LwIP/` |
-| 默认 IP | 静态 **`192.168.10.30`**，网关 `192.168.10.200`（Jetson eno1） | `LwIP/lwip_app/lwip_comm/lwip_comm.c` |
+| 默认 IP | 静态 **F407 `192.168.10.30`**，上位机 **`192.168.10.201`**（`remoteip`） | `LwIP/lwip_app/lwip_comm/lwip_comm.c` |
 | 仲裁模式以太网 | **已接入**：`ETH_LWIP_ENABLE=1`，`App_EthInit()` + `vNetTask` | `APP/freertos/app_boot.c` |
 | RX 收包模式 | **FreeRTOS 轮询**：`ETH_RX_POLL_ONLY=1`，Net 任务 drain DMA（不用 ETH IRQ） | `app_boot.h`、`app_boot.c` |
 | 诊断计数 | 启动 gratuitous ARP + 周期打印 `rx/tx_ok/rbus/desc_cpu` | `lan8720.c`、`rtos_tasks.c` |
@@ -77,8 +80,8 @@
 |------|-----|------|
 | CAN2 | `JETSON_LINK_CAN = 1` | 已实现 |
 | RS232 | `JETSON_LINK_CAN = 0` | 已实现（当前默认） |
-| 以太网 | `ETH_LWIP_ENABLE=1` | lwIP 已启；**L2 ping 未通，联调暂停** |
-| RS232 BLOB v2 | `JETSON_USE_BLOB_V2=1` | 代码已接，**当前联调重点** |
+| 以太网 | `ETH_LWIP_ENABLE=1` | lwIP 已启、**ping 已通**；UDP/BLOB 控制链路待接 `jetson_eth` |
+| RS232 BLOB v2 | `JETSON_USE_BLOB_V2=1` | 代码已接；与以太网 **编译期二选一**（PA2 冲突，见 §12.10） |
 
 ---
 
@@ -141,10 +144,10 @@
 
 | 方向 | 协议 | 端口 | 载荷 |
 |------|------|------|------|
-| 上位机 -> F407 | UDP | **50001** | V3 下行 `type=0x01`（24B） |
-| F407 -> 上位机 | UDP | **50002** | V3 上行 `type=0x02/0x03`（24B） |
-| 服务帧（可选） | UDP | **50003** | 时间同步/故障/GPS（8B 或 24B 封装） |
-| 连通性测试 | ICMP | — | `ping -I 192.168.10.200 192.168.10.30` |
+| 上位机 -> F407 | UDP | **50001** | BLOB v2 下行 `MSG=0x01`（线长 23B）或 V3 `0x01`（24B，旧） |
+| F407 -> 上位机 | UDP | **50002** | BLOB `0x02/0x03/…` 或 V3 `0x02/0x03` |
+| 服务帧（可选） | UDP | **50003** | 0xA5 时间同步等（11B） |
+| 连通性测试 | ICMP | — | `ping <F407_IP>` |
 
 **单帧交互时序**
 
@@ -157,50 +160,35 @@
 
 ### 4.3 MCU 侧实施流程（分步）
 
+> **完整对照表与验收标准见 [§14](#14-网线-udp-发消息完整实现流程ping-通过后)**。以下为摘要。
+
 ```text
-步骤 1 — 编译开关
-  新增 APP/jetson_can/jetson_can.h：
-    #define JETSON_LINK_TYPE  0   /* 0=RS232  1=CAN  2=ETH */
-  或保留 JETSON_LINK_CAN，另增 JETSON_LINK_ETH
+步骤 1 — 编译开关（三选一）
+  JETSON_LINK_CAN=1          → CAN2
+  JETSON_LINK_CAN=0 + ETH=0  → RS232 BLOB v2（现有默认）
+  JETSON_LINK_CAN=0 + ETH=1  → 以太网 UDP BLOB v2（新建 JETSON_LINK_ETH）
 
-步骤 2 — 启动 lwIP（仲裁模式）
-  在 App_MotionHwInit() 或独立 vNetTask 中：
-    lwip_comm_init()
-    创建 UDP PCB，绑定本地 50001，注册接收回调
-  主循环 / 专用任务中周期性调用：
-    lwip_periodic_handle()
+步骤 2 — lwIP 已就绪（ETH_LWIP_ENABLE=1）
+  App_EthInit() + vNetTask 周期 App_EthPoll()  ← 工程已有
 
-步骤 3 — 收发模块（新建 APP/jetson_eth/）
-  jetson_eth.c：
-    - JetsonEth_Init()
-    - JetsonEth_OnUdpRx() -> 写入环形缓冲
-    - JetsonEth_GetFrame() -> 供 vJetsonTask 读取（接口对齐 JetsonCAN_GetFrame）
-    - JetsonEth_SendV3Frame() -> UDP 发往 192.168.1.106:50002
+步骤 3 — 新建 APP/jetson_eth/（待实现）
+  JetsonEth_Init()：UDP bind 50001，注册 recv 回调
+  收：UDP payload → blob_rx_frame_t 环形队列 → BlobPack_HandleDownlink()
+  发：BlobEth_Send() 替代 BlobRs232_Send()，UDP 发往 remoteip:50002
 
-步骤 4 — 接入现有任务
-  修改 APP/freertos/rtos_tasks.c 中 vJetsonTask：
-    #if JETSON_LINK_ETH
-      JetsonEth_ProcessRx();
-      if(JetsonEth_GetFrame(jetson_frame)) ...
-      JetsonEth_SendV3StatusFrame(...);
-    #elif JETSON_LINK_CAN
-      ...（现有逻辑）
-    #else
-      ...（RS232）
+步骤 4 — 改 vJetsonTask / agv_blob_pack.c
+  以太网分支复用现有 BLOB 编解码，仅换物理发送函数
 
-步骤 5 — Jetson/PC 测试脚本
-  Python socket：发 0x01、收 0x02，统计 RTT 延时
+步骤 5 — 上位机 Python 脚本验证（见 §14.5）
 ```
 
 ### 4.4 上位机侧（Jetson / PC）
 
 ```python
-# 伪代码示意
-sock_tx = UDP -> ("192.168.1.30", 50001)
-sock_rx = UDP bind local 50002
-send_v3_cmd(seq, v, steer, omega)   # 24 字节，定义见 Jetson_CAN协议.md 4
-status = recv_v3_status()           # type=0x02
-rtt_ms = t_recv - t_send
+# BLOB v2 over UDP（推荐，与 RS232 应用层一致）
+# 见 §14.5 完整脚本
+sock_tx.sendto(blob_0x01_wire, ("192.168.10.30", 50001))
+data, _ = sock_rx.recvfrom(2048)   # 期望 0xAB 头 + PAYLOAD
 ```
 
 ### 4.5 延时测量（网线）
@@ -346,10 +334,11 @@ rtt_ms = t_recv - t_send
   [ ] 记录现有链路 RTT 基线
 
 阶段 1 — 网线 UDP 控制（1~2 周）
-  [ ] lwip_comm_init 接入仲裁模式
+  [x] lwip_comm_init 接入仲裁模式
+  [x] ping 连通（PC 或 Jetson eno1）
   [ ] jetson_eth 模块 + vJetsonTask 分支
-  [ ] Jetson Python 收发脚本
-  [ ] ping + V3 RTT 测试报告
+  [ ] 上位机 UDP BLOB 收发脚本 / eth_gateway
+  [ ] BLOB RTT 测试报告（对比 RS232）
 
 阶段 2 — 网线 HTTP 网页（1 周）
   [ ] motion.shtml + motion.cgi
@@ -425,12 +414,12 @@ A：**可以**，推荐 **不同网段分工**（WiFi 做 SSH/开发，有线做
 
 | 功能 | 物理介质 | 传输协议 | 应用层 | 工程状态 |
 |------|----------|----------|--------|----------|
-| 网线直连 | RJ45 + LAN8720 | **UDP**（主）+ ICMP（ping） | V3 24B | lwIP 已启，**L2 未通，暂停** |
-| RS232 直连 | USART2 PA2/PA3 | BLOB v2 / V3 帧 | BLOB / V3 | **当前联调重点** |
+| 网线直连 | RJ45 + LAN8720 | **UDP**（主）+ ICMP（ping） | **BLOB v2**（推荐）/ V3 24B | **ping 已通**；UDP 控制待 `jetson_eth` |
+| RS232 直连 | USART2 PA2/PA3 | BLOB v2 / V3 帧 | BLOB / V3 | 已实现；与以太网 **不可同时**（PA2） |
 | 网页控制 | 网线->路由器->WiFi | **HTTP + CGI** | V3 24B | 有演示，待改运动页 |
 | WiFi 免网线 | WiFi 模组（后续） | AT 透传 / 模组 Web | V3 24B | 未实现 |
 
-**一句话**：以太网 **软件栈已就绪**，当前卡在 **L2 物理/链路**（见 §13）；**RS232 BLOB v2** 为现阶段主链路。若专搞 RS232，建议 `ETH_LWIP_ENABLE=0` 释放 **PA2** 给 `USART2_TX`。
+**一句话**：以太网 **ping 已通**，下一步按 **§14** 接 **UDP + BLOB v2**；RS232 与以太网因 **PA2** 冲突须 **编译期二选一**。
 
 ---
 
@@ -649,7 +638,7 @@ ping -c 3 192.168.1.1                   # WiFi 仍应正常
 | 项 | 值 |
 |----|-----|
 | F407 IP | `192.168.10.30/24` |
-| 网关 / Jetson 对端 | `192.168.10.200` |
+| 上位机 / `remoteip` | `192.168.10.201` |
 | MAC | `02:00:00:` + STM32 UID 低 24 bit（例：`02:00:00:1D:00:3B`） |
 
 ### 12.2 启动顺序（`App_MotionHwInit()`）
@@ -706,14 +695,15 @@ vNetTask (prio=2, 周期 5ms)            [rtos_tasks.c]
 
 ```text
 App_EthPoll()                          [app_boot.c]
-  __disable_irq()                      ← 避免与 lwip_periodic 重入
-  while (ETH_GetRxPktSize(DMARxDescToGet) != 0)
-    lwip_pkt_handle()                  → ethernetif_input → ETH_Rx_Packet
-    s_eth_rx_frames++
-  ETH_RecoverRxDma()                   ← 清 DMASR.RBUS，DMARPDR=0
-  lwip_periodic_handle()               ← ARP/TCP/DHCP 定时器
+  while (有 Rx 帧)
+    __disable_irq() / lwip_pkt_handle() / __enable_irq()   ← 每帧短临界区
+  __disable_irq()
+  ETH_RecoverRxDma()
+  lwip_periodic_handle()
   __enable_irq()
 ```
+
+> **勿**在 `while` 收包循环外长时间 `__disable_irq()`，否则会丢 **USART3 测距** RX 字节（见 **§15.4**）。
 
 **`ETH_GetRxPktSize`**（`stm32f4x7_eth.c`）：当前 Rx 描述符 `OWN=0` 且 `LS=1` 且无 `ES` 时返回帧长，否则 0。
 
@@ -754,9 +744,9 @@ ICMP ping 回复、后续 UDP 发送均走同一 `low_level_output` → `ETH_Tx_
 | `rbus` | DMASR Receive Buffer Unavailable | 1 = RX DMA 曾饿死，需 `ETH_RecoverRxDma` |
 | `desc_cpu` | OWN=0 的 Rx 描述符个数 | 0 = 全在 DMA 手里等包；>0 且 rx=0 可能是轮询/描述符异常 |
 
-### 12.9 应用层接入点（尚未实现）
+### 12.9 应用层接入点（待实现 → 见 §14）
 
-以太网 **UDP/BLOB 控制** 待新建 `APP/jetson_eth/`，在 `vJetsonTask` 中与 RS232/CAN 分支并列（见 §4.3）。当前 `vJetsonTask` 仍只走 `USART3_*` / `JetsonCAN_*`。
+以太网 **UDP/BLOB 控制** 待新建 `APP/jetson_eth/`（见 **§14.4**）。当前 `vJetsonTask` 仍只走 `BlobRs232_*` / `JetsonCAN_*`；`vNetTask` 仅负责 LwIP 轮询与诊断。
 
 ### 12.10 与 RS232 的引脚冲突（重要）
 
@@ -844,11 +834,11 @@ ping -I 192.168.10.200 -c 4 192.168.10.30
 | 0 | 0 | — | MCU TX 未发出，查 DMA/PHY TX |
 | ≥1 | >0 | — | L2 已通，再查 ICMP/防火墙 |
 
-### 13.5 当前决策
+### 13.5 当前决策（2026-06-17 更新）
 
-- **以太网联调暂停**；软件栈与诊断日志保留，后续换线/换口/笔记本交叉验证后再续。
-- **控制链路改 RS232 BLOB v2**（见 [Jetson_BLOB协议_v2.md](./Jetson_BLOB协议_v2.md)、[Jetson_RS232协议.md](./Jetson_RS232协议.md)）。
-- RS232 联调前建议 **`ETH_LWIP_ENABLE=0`**，避免 PA2 被 MDIO 占用导致 **MCU→Jetson 发不出**。
+- **L3 ping 已通过**（PC `192.168.1.106` ↔ F407 `192.168.1.122`，或 `192.168.10.x` 网段）；§13.1~13.4 保留作历史排查参考。
+- **下一步**：按 **[§14](#14-网线-udp-发消息完整实现流程ping-通过后)** 实现 **UDP 透传 BLOB v2**，上位机收 `0x02/0x03` 上行。
+- **链路选择**：走以太网时 `ETH_LWIP_ENABLE=1` 且 **关闭 RS232 控制**（PA2=MDIO）；走 RS232 时 `ETH_LWIP_ENABLE=0`。
 
 ### 13.6 RS232 BLOB v2 联调问题（与以太网独立）
 
@@ -864,4 +854,511 @@ ping -I 192.168.10.200 -c 4 192.168.10.30
 
 ---
 
+## 14. 网线 UDP 发消息：完整实现流程（ping 通过后）
+
+本节是 **ping 已通之后** 的落地指南：经网线向上位机（PC 或 Jetson）收发控制与状态消息。**MCU 与上位机分工明确**，按阶段验收。
+
+### 14.1 目标与原则
+
+| 项目 | 约定 |
+|------|------|
+| **物理** | RJ45 网线直连 PC 或 Jetson `eno1` |
+| **网络层** | IPv4 静态 IP，已 `ping` 通 |
+| **传输层** | **UDP**（一帧一报文，低延迟） |
+| **应用层** | **BLOB v2**（`0xAB` 线格式，与 RS232 相同 struct） |
+| **仲裁** | 下行 `0x01` 仍走 `BlobPack_HandleDownlink()` → `Arbiter` → CAN1 |
+| **与 RS232 关系** | **编译期二选一**；以太网模式下 PA2=MDIO，RS232 TX 不可用 |
+
+> 旧版 **V3 24B（0xAA）** 仍可作为最小联调载荷，但综合工程默认 **BLOB v2**，上位机脚本应与 RS232 共用同一套 struct 定义（见 [Jetson_BLOB协议_v2.md](./Jetson_BLOB协议_v2.md)）。
+
+### 14.2 端到端数据流
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 上位机（PC / Jetson）                                                    │
+│  eth_link_test.py  或  eth_gateway（ROS2，后续）                          │
+│    UDP:50001 发 BLOB 0x01 (23B)  ───────────────────────────────┐       │
+│    UDP:50002 收 BLOB 0x02/0x03/...  <───────────────────────────┼───┐   │
+└───────────────────────────────────────────────────────────────────┼───┼───┘
+                                                                    │   │
+                         网线 L2/L3（已 ping 通）                    │   │
+                                                                    ▼   │
+┌─────────────────────────────────────────────────────────────────────────┐
+│ F407（综合实验程序）                                                     │
+│  vNetTask (5ms)                                                         │
+│    App_EthPoll() → lwIP 收 UDP → jetson_eth 回调入队                     │
+│  vJetsonTask (20ms)                                                     │
+│    出队 BLOB → BlobPack_HandleDownlink() → Arbiter → 底盘 CAN1          │
+│    BlobPack_UplinkTick() → BlobEth_Send() → UDP 发往 remoteip:50002     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**单帧时序（20 ms 周期）**
+
+```text
+上位机                              F407
+  |  UDP → :50001  [0xAB… MSG=0x01]  -->  recv 回调 → 环形队列
+  |                                   |  vJetsonTask → Arbiter 解析控制
+  |  <-- UDP ← :50002  [0xAB… 0x02]   |  BlobPack 组 0x02 运动摘要
+  |  <-- UDP ← :50002  [0xAB… 0x03]   |  交替发 MCU 状态
+```
+
+### 14.3 IP 与端口（综合工程默认）
+
+| 设备 | IP | 掩码 | 说明 |
+|------|-----|------|------|
+| **F407（MCU）** | **192.168.10.30** | 255.255.255.0 | `lwip_comm_default_ip_set()` |
+| **上位机（PC）** | **192.168.10.201** | 255.255.255.0 | 网关留空；MCU `remoteip` 指向此地址 |
+| F407 网关 | 无（0.0.0.0） | — | 网线直连不需网关 |
+
+> 普中 52 例程对照 IP 为 `192.168.1.122` / `192.168.1.106`，与本综合工程不同。Jetson `eno1` 若用 `192.168.10.200`，须同步改 `lwip_comm.c` 中 `remoteip`。
+
+#### UDP 端口
+
+| 方向 | 本地绑定 | 对端地址 | 载荷 |
+|------|----------|----------|------|
+| 上位机 → F407 | 任意源端口 | `F407_IP:50001` | BLOB 线格式（例 0x01 = 23 B） |
+| F407 → 上位机 | F407 任意源端口 | `上位机_IP:50002` | BLOB 0x02/0x03/… |
+| 连通性 | ICMP | — | `ping F407_IP`（已完成） |
+
+**防火墙**：Windows 须放行 **入站 UDP 50002**（或测试时临时关闭防火墙）。
+
+### 14.4 MCU 侧：要做什么（按顺序）
+
+#### 阶段 0 — 前置（你已完成）
+
+- [x] `ETH_LWIP_ENABLE=1`，串口见 `[ETH] lwIP OK`、`PHY link UP`
+- [x] 上位机 `ping F407_IP` 成功
+- [x] 串口 `[ETH] link=UP rx>0`（有 ICMP/ARP 时 rx 会增长）
+
+#### 阶段 1 — 编译与宏
+
+| 宏 | 文件 | 以太网模式建议值 |
+|----|------|------------------|
+| `ETH_LWIP_ENABLE` | `APP/freertos/app_boot.h` | `1` |
+| `JETSON_LINK_CAN` | `APP/jetson_can/jetson_can.h` | `0` |
+| `JETSON_USE_BLOB_V2` | `APP/agv_blob/agv_blob_wire.h` | `1` |
+| `JETSON_LINK_ETH`（**待新增**） | `jetson_can.h` 或 `jetson_eth.h` | `1` |
+
+```text
+#if JETSON_LINK_CAN
+  → CAN2 链路（与以太网无关）
+#elif JETSON_LINK_ETH
+  → UDP BLOB（本节）
+#else
+  → RS232 BLOB（现有默认）
+#endif
+```
+
+**注意**：`JETSON_LINK_ETH=1` 时不要再依赖 `USART2` 发 Jetson 数据；`BlobRs232_*` 分支改为 `BlobEth_*`。
+
+#### 阶段 2 — 新建 `APP/jetson_eth/`
+
+建议文件：`jetson_eth.c`、`jetson_eth.h`。
+
+| 函数 | 职责 |
+|------|------|
+| `JetsonEth_Init()` | `udp_new()` → `udp_bind(IP_ADDR_ANY, 50001)` → `udp_recv(callback)`；在 `App_EthInit()` 成功之后调用 |
+| `JetsonEth_UdpRxCallback()` | lwIP 回调：**不可**调 `printf`/阻塞；把 `p->payload` 拷入 **FreeRTOS 环形队列**（按完整 BLOB 线长） |
+| `JetsonEth_GetFrame(blob_rx_frame_t *)` | 供 `vJetsonTask` 消费，接口对齐 `BlobRs232_GetFrame()` |
+| `BlobEth_Send(msg_id, seq, payload, len)` | 组 9B 头 + payload → `udp_sendto(remoteip, 50002)` |
+
+**实现要点**
+
+1. **线程安全**：UDP 回调与 `vJetsonTask` 之间只用队列传递，不在回调里调 `BlobPack_HandleDownlink()`。
+2. **remote IP**：读 `lwipdev.remoteip[]`（已在 `lwip_comm_default_ip_set()` 写好对端 IP）。
+3. **内存**：`pbuf` 在回调里 `pbuf_free(p)`；发送用 `PBUF_RAM` 或栈缓冲 + `udp_sendto`。
+4. **周期维护**：`vNetTask` 已有 `App_EthPoll()`，**无需**再开 ETH 中断收包。
+
+#### 阶段 3 — 改 `agv_blob_pack.c`
+
+将 `BlobRs232_Send()` 抽象为传输层函数指针，或：
+
+```c
+#if JETSON_LINK_ETH
+  #define BlobTransport_Send  BlobEth_Send
+#else
+  #define BlobTransport_Send  BlobRs232_Send
+#endif
+```
+
+`BlobPack_UplinkTick()`、`BlobPack_SendGps()` 等统一走 `BlobTransport_Send`，**业务逻辑零改动**。
+
+#### 阶段 4 — 改 `vJetsonTask`（`rtos_tasks.c`）
+
+```text
+#if JETSON_LINK_ETH
+  while (JetsonEth_GetFrame(&blob_frame))
+    BlobPack_HandleDownlink(&blob_frame);
+  BlobPack_UplinkTick(...);          // 内部已走 BlobEth_Send
+#elif !JETSON_LINK_CAN && JETSON_USE_BLOB_V2
+  while (BlobRs232_GetFrame(&blob_frame)) ...
+#else
+  ... RS232 V3 / CAN 分支
+#endif
+```
+
+#### 阶段 5 — Keil 工程
+
+- 把 `jetson_eth.c` 加入工程分组 `APP`
+- 确认 `lwipopts.h` 中 `LWIP_UDP=1`（默认已开）
+
+#### 阶段 6 — MCU 验收标准
+
+| 级别 | 操作 | F407 串口期望 |
+|------|------|---------------|
+| L3 | 上位机发 1 帧 0x01 | `[JETSON BLOB CMD]`、`ARB=NORMAL`（与 RS232 相同） |
+| L4 | 上位机只监听 50002 | 持续收到 0x02/0x03，`[ETH] rx` 递增 |
+| L5 | 发控制改速度 | 底盘 CAN 有输出 / LCD 状态变化 |
+
+### 14.5 上位机侧：要做什么（PC 先行，Jetson 后续）
+
+#### 阶段 0 — 网络（你已完成）
+
+**PC（默认）**
+
+```cmd
+ipconfig
+ping 192.168.10.30
+```
+
+#### 阶段 1 — 最小 UDP 回环测试（MCU 未改代码前也可做）
+
+用 **netcat** 或 Python 确认端口可达（需 F407 侧先 bind 50001，或暂用 52 例程 UDP 演示端口 8089 做 LwIP 冒烟）。
+
+#### 阶段 2 — BLOB 0x01 下行 + 0x02 上行（核心）
+
+在仓库 `tools/` 下建议新增 `eth_link_test.py`（逻辑对齐 `jetson_rs232_link_test.py --blob-v2`）：
+
+```python
+#!/usr/bin/env python3
+"""F407 以太网 BLOB v2 联调：发 0x01，收 0x02/0x03"""
+import socket, struct, time
+
+F407_IP = "192.168.10.30"
+PORT_DOWN = 50001
+PORT_UP = 50002
+MAGIC, VER = 0xAB, 0x01
+
+def build_control(seq: int, v_mm_s: int = 0) -> bytes:
+    """agv_control_t 14B + 9B 头 = 23B，字段定义见 Jetson_BLOB协议_v2.md"""
+    payload = struct.pack(">hHhHBBBB",
+        v_mm_s, 0, 0, 0,          # v, steer, omega, accel（示例填 0）
+        1, 1, 0, 0, 0)             # mode_req, motion_model, clear_error, flags, reserved
+    hdr = struct.pack(">BBBBHBBB", MAGIC, VER, 0x01, seq & 0xFF, 14, 0, 1, 0)
+    return hdr + payload
+
+def parse_blob(data: bytes):
+    if len(data) < 9 or data[0] != MAGIC:
+        return None
+    msg_id, seq = data[2], data[3]
+    plen = (data[4] << 8) | data[5]
+    if len(data) < 9 + plen:
+        return None
+    return msg_id, seq, data[9:9+plen]
+
+def main():
+    tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rx.bind(("0.0.0.0", PORT_UP))
+    rx.settimeout(2.0)
+    seq = 0
+    print(f"TX -> {F407_IP}:{PORT_DOWN}  RX bind :{PORT_UP}")
+    while True:
+        wire = build_control(seq)
+        t0 = time.time()
+        tx.sendto(wire, (F407_IP, PORT_DOWN))
+        try:
+            data, addr = rx.recvfrom(2048)
+            dt = (time.time() - t0) * 1000
+            p = parse_blob(data)
+            print(f"seq={seq} recv {len(data)}B from {addr} msg=0x{p[0]:02X} rtt={dt:.1f}ms" if p else f"bad frame {data[:16].hex()}")
+        except socket.timeout:
+            print(f"seq={seq} uplink timeout")
+        seq = (seq + 1) & 0xFF
+        time.sleep(0.02)   # 50 Hz，与 JETSON_TASK_CYCLE_MS=20 对齐
+
+if __name__ == "__main__":
+    main()
+```
+
+**PC 运行**
+
+```cmd
+python tools\eth_link_test.py
+```
+
+**Jetson 运行**（方案 B，改脚本内 `F407_IP`）
+
+```bash
+python3 tools/eth_link_test.py
+```
+
+#### 阶段 3 — 抓包定责（可选）
+
+```bash
+# Jetson
+sudo tcpdump -i eno1 -n udp port 50001 or port 50002
+
+# Windows（需 Npcap）
+# Wireshark 过滤器：udp.port == 50001 || udp.port == 50002
+```
+
+| 现象 | 倾向 |
+|------|------|
+| tcpdump 见 50001，无 50002 | MCU 未实现发送或 `remoteip` 错误 |
+| 50002 有包但脚本解析失败 | 载荷长度/字节序与 BLOB 文档不一致 |
+| 双向都有包，无 `[JETSON BLOB CMD]` | MCU 未接 `jetson_eth` 或队列未喂给 `BlobPack` |
+
+#### 阶段 4 — ROS2 `eth_gateway`（后续，对齐 RS232）
+
+参考 `rs232_gateway` 架构，后续在 Jetson 侧实现：
+
+```text
+ROS topic (/cmd_vel 等)
+    → eth_gateway 组 BLOB 0x01 → UDP :50001
+    ← UDP :50002 解析 0x02/0x03 → 发布 /jetson_eth/motion 等
+```
+
+PC 联调阶段 **不必等 ROS**，先用 `eth_link_test.py` 打通即可。
+
+### 14.6 分工总表
+
+| 步骤 | MCU（F407） | 上位机（PC / Jetson） |
+|------|-------------|------------------------|
+| 1 | `ETH_LWIP_ENABLE=1`，确认 ping | 设静态 IP，`ping F407` |
+| 2 | 新建 `jetson_eth`，bind **50001** | bind **50002**，防火墙放行 |
+| 3 | UDP 收 → 队列 → `BlobPack_HandleDownlink` | `eth_link_test.py` 发 **0x01** 50Hz |
+| 4 | `BlobEth_Send` 发 0x02/0x03 到 `remoteip:50002` | 脚本打印 `msg=0x02/0x03`、RTT |
+| 5 | 串口确认 `ARB=NORMAL` | 对比 RS232 同指令的行为 |
+| 6 | Keil 合入工程、烧录 | 保存日志，写延时对比表 |
+| 7（可选） | `remoteip` 与实际上位机 IP 一致 | 部署 `eth_gateway` 接 ROS2 |
+
+### 14.7 与 RS232 / CAN 切换
+
+| 场景 | `ETH_LWIP_ENABLE` | `JETSON_LINK_ETH` | Jetson 物理连接 |
+|------|-------------------|-------------------|-----------------|
+| 以太网控制 | `1` | `1` | 网线 |
+| RS232 BLOB | `0` | `0` | USB-TTL / USART2 |
+| CAN 控制 | `0` | `0` | CAN2 |
+
+**不要**在同一固件里同时打开以太网 + RS232 控制：PA2 冲突，且双链路会抢 Arbiter 心跳。
+
+### 14.8 常见问题（UDP 阶段）
+
+**Q：ping 通但 UDP 无响应？**  
+A：查 F407 是否已 `udp_bind(50001)`；Windows 防火墙是否拦 **入站 50002**；`remoteip` 是否等于 PC/Jetson 实际 IP。
+
+**Q：能收 0x02 但 `ARB=DEGRADED`？**  
+A：与 RS232 相同——须 **持续 50Hz 发 0x01** 作心跳；见 [Jetson_BLOB协议_v2.md §C.9](./Jetson_BLOB协议_v2.md)。
+
+**Q：是否还要发 0xA5 时间同步？**  
+A：以太网阶段 **可选**；BLOB 控制不依赖 0xA5。需要时可另开 UDP **50003** 透传 11B 服务帧。
+
+**Q：载荷用 V3 还是 BLOB？**  
+A：综合工程默认 **BLOB v2**；仅做最小演示时可发 24B `0xAA`，但须关闭 `JETSON_USE_BLOB_V2` 并走 V3 分支（不推荐与当前固件混用）。
+
+---
+
+## 15. 资源冲突与解决办法（必读）
+
+本节汇总 **实验室已踩坑** 与 **全工程代码审计** 结论：引脚复用、串口/链路互斥、中断与 timing、上位机网络等。新增功能前先查此表。
+
+### 15.1 总览：推荐编译组合
+
+| 场景 | `ETH_LWIP_ENABLE` | `JETSON_LINK_CAN` | Jetson 物理链路 | 测距 LCD |
+|------|-------------------|-------------------|-----------------|----------|
+| **以太网 UDP 控制（当前）** | `1` | `0` | 网线 UDP | 可用（须 §15.4 修复已合入） |
+| **RS232 BLOB 联调** | **`0`** | `0` | PA2/PA3 RS232 | 可用 |
+| **CAN 控制** | `0` | `1` | CAN2 PB5/PB6 | 可用 |
+| ~~以太网+RS232 同时~~ | — | — | **禁止** | PA2 冲突 |
+
+控制链路 **编译期三选一**：CAN / RS232 / 以太网（`JETSON_LINK_ETH` 随 `ETH_LWIP_ENABLE` 自动为 1）。
+
+### 15.2 引脚 / 外设冲突
+
+| ID | 冲突资源 | 涉及功能 A | 涉及功能 B | 现象 | 解决办法 | 代码/文档 |
+|:--:|----------|------------|------------|------|----------|-----------|
+| **P1** | **PA2** | `ETH_MDIO`（LAN8720） | `USART2_TX`（Jetson RS232 发） | 开以太网后 MCU **发不出** RS232/BLOB 上行；PA2 被 MDIO 占 | **`ETH_LWIP_ENABLE=1` 时勿用 RS232 控制**；RS232 联调设 `ETH_LWIP_ENABLE=0` | `lan8720.c`、`app_boot.c` §12.10 |
+| **P2** | PA3 | — | `USART2_RX` | 以太网模式下 PA3 仍可收字节，但 **无 TX 应答**；易误导调试 | 以太网模式 **跳过 `USART3_Init()`**（不 init USART2）；控制走 UDP | `app_boot.c`（v1.4+） |
+| **P3** | 命名 | `USART3_*` 函数名 | 实际硬件 **USART2** | 查文档/接线易搞错 | 记：**Jetson=USART2 PA2/PA3**；**测距=USART3 PB10/PB11** | `usart3.c`、`distance_sensor.c` |
+| **P4** | PB10/PB11 | **USART3** 测距 9600 | 以太网 RMII | **无引脚冲突**；RMII 用 PA/PC/PG | 测距与以太网 **可同时开** | `distance_sensor.c`、`lan8720.c` |
+| **P8** | **E08 供电** | 四路测距转接模组 | F407 5V/3.3V 负载 | **`rx=0` / 偶发 `rx=12` 后停**；与以太网/Jetson **无关** | **独立稳定 5V** 供 E08；**GND 与 F407 共地**；勿仅靠杜邦线从开发板 5V 拖大电流 | 见 **§15.11** |
+| **P5** | PA11/12 | CAN1 底盘 | — | 与以太网无重叠 | 可同时用 | `can.c` |
+| **P6** | PC6/7 | USART6 GPS | — | 与以太网无重叠；GPS 启动时会 **9600→115200 切波特率** | 勿接其他设备到 USART6；等 `[GPS][CFG] done` 后再依赖 GPS | `gps.c` |
+| **P7** | PA2/PA3 | `RS485`/`rs232.c` 演示 | Jetson `usart3.c` | 若 `RS485_ENABLE` 且同时链入，**重复 `USART2_IRQHandler`** | 综合工程 **勿定义 `RS485_ENABLE`**；演示 RS485 勿与 Jetson 同固件 | `rs485.c` `#if RS485_ENABLE` |
+
+### 15.3 控制链路 / 应用层冲突
+
+| ID | 冲突 | 现象 | 解决办法 |
+|:--:|------|------|----------|
+| **L1** | 以太网 + RS232 **同时**写 Arbiter | 双心跳、seq 乱、安全态跳变 | 编译期只开一条：`JETSON_LINK_ETH` 或 RS232 |
+| **L2** | 以太网 + CAN **同时**主控 | 同上 | 默认 CAN 底盘保留；Jetson 控制三选一 |
+| **L3** | 上位机未发 **0x01 心跳** | `ARB=DEGRADED/RECOVERING`；曾误停发 **0x04 测距 BLOB** | 上位机 **50Hz 发 0x01**；MCU 已在心跳丢失时仍发 0x04（v1.4+） |
+| **L4** | Jetson **多进程**抢串口 | `TimeSync` 有、BLOB 无；`ore` 风暴 | `pkill rs232_gateway`；以太网模式无此问题 |
+| **L5** | `BlobRs232_Send` + `JetsonEth_Send` 同时 | 理论上双发；当前 **宏互斥** 只链一路 | 保持 `BlobLink_Send` 单一定义 |
+
+### 15.4 中断 / 时序冲突（MCU）
+
+| ID | 冲突点 | 现象 | 解决办法 | 状态 |
+|:--:|--------|------|----------|:--:|
+| **T1** | `App_EthPoll()` **长时间** `__disable_irq()` | 测距 `valid=0`、`[DS] RX timeout`、65535 | **每帧** eth 收包单独关中断；已修复 | ✅ 已修 |
+| **T2** | `JetsonEth_Send()` 内 `__disable_irq()` | 极短；偶发丢测距字节 | 发送前临界区尽量短；测距 ISR 优先级 **1** 高于 Net 任务 | 已知/可接受 |
+| **T3** | **TIM4 20ms** 测距触发 vs **vNetTask 5ms** eth 轮询 | 触发本身在 ISR；收包靠 USART3 ISR | T1 修复后正常 | ✅ |
+| **T4** | **TIM3 10ms** lwIP 时钟 vs **USART3** 测距 | 同抢占优先级 **1**，可能互堵数 µs | 可接受；若仍丢字节可将测距升到 **0** | 低风险 |
+| **T5** | **TIM2 100ms** 拍照 ISR（`KEY_Scan+delay_ms`） | 与 `KeyTask` 冲突、卡死 | 仲裁模式 **`TIM2_Cmd(DISABLE)`** | ✅ `app_boot.c` |
+| **T6** | 任务内 **大量 `printf`**（`[JETSON BLOB CMD]`） | 占 USART1、拖慢任务，间接影响实时性 | 联调用 `RTOS_VERBOSE_*`；量产关日志 | 建议 |
+| **T7** | `vJetsonTask` 20ms vs 测距整轮 **~280ms** | 无直接冲突；DistSnapshot Readers 用临界区 | 保持 `DistSnapshot_Read/Write` | ✅ |
+| **T8** | FreeRTOS：`configMAX_SYSCALL_INTERRUPT_PRIORITY=5` | 优先级 **≥6** 的 ISR 不能调 FreeRTOS API | ETH IRQ=6 且 **轮询模式关闭 ETH IRQ**；USART2 DMA=6 | ✅ 设计如此 |
+
+**测距触发说明（非高电平问题）**：PB10 平时 UART 空闲高；触发时切 GPIO **拉低 ~20ms** 再切回 UART（**低电平启动**，见 `DistanceSensor_Process()`）。与以太网 MDIO **无关**。
+
+### 15.5 内存 / lwIP 冲突
+
+| ID | 问题 | 现象 | 解决办法 |
+|:--:|------|------|----------|
+| **M1** | lwIP 池占 **片内 SRAM** | `lwIP init failed code=1` | 池改 **SRAMEX**（外扩） | ✅ 已做 |
+| **M2** | ETH DMA 描述符 | 需 mem1 | 保持 `ETH_Mem_Malloc()` 在 mem1 | ✅ |
+| **M3** | `FREERTOS_HEAP_BYTES=32KB` | 任务多栈紧张 | 见 `rtos移植.md`；`vNetTask` 栈 512 words | 监控 `[RTOS] stack` |
+
+### 15.6 上位机 / 网络层冲突（Jetson / PC）
+
+| ID | 问题 | 现象 | 解决办法 |
+|:--:|------|------|----------|
+| **N1** | Jetson **eno1 + WiFi 同网段** `192.168.1.x` | SSH 超时、ping 走错网卡 | **分网段**：WiFi `192.168.1.x`，有线 `192.168.10.x`；eno1 `never-default` | §11.7 |
+| **N2** | eno1 **未插线** 却配 `192.168.1.200` | 路由进黑洞 | 未插线 **删掉** eno1 上 `192.168.1.x` | §11.6 |
+| **N3** | PC 防火墙拦 **UDP 50002** | 只 ping 通、收不到 BLOB | 放行入站 50002 或临时关防火墙 | §14.3 |
+| **N4** | PC IP 与 F407 **不同网段** | ping 不通 | F407 `192.168.10.30`，PC `192.168.10.201` | `lwip_comm.c` |
+
+### 15.7 串口分配一览（避免再接错线）
+
+|  USART | 引脚 | 波特率 | 用途 | 与以太网 |
+|:------:|------|--------|------|----------|
+| **USART1** | PA9/10 | 115200 | **调试 printf**（USB 转串口） | 独立，可常开 |
+| **USART2** | PA2/PA3 | 115200 | Jetson RS232 BLOB（`ETH=0` 时） | **PA2 与 MDIO 冲突** |
+| **USART3** | PB10/11 | 9600 | **四路测距** E08 | **无冲突** |
+| **USART6** | PC6/7 | 9600→115200 | GPS | 无冲突 |
+
+### 15.8 新增功能前检查清单
+
+- [ ] 是否占用 **PA2**？若开 `ETH_LWIP_ENABLE`，PA2 只能给 MDIO
+- [ ] 是否再开一条 **Jetson 控制链路**？只能 CAN / RS232 / ETH 三选一
+- [ ] ISR 里是否 **长时间关全局中断**？会伤测距 USART3
+- [ ] 是否在 ISR 里 **printf**？禁止；日志放任务
+- [ ] lwIP 路径是否在 **持锁** 时阻塞？`NO_SYS=1` 下注意与 FreeRTOS 任务并发
+- [ ] 上位机是否 **持续 0x01 心跳**（50Hz）？
+- [ ] Jetson 是否 **双网卡同网段**？
+- [ ] E08 转接板是否 **独立 5V 供电稳定**、与 F407 **共地**？（见 **§15.11**）
+
+### 15.9 代码审计结论（2026-06-17）
+
+| 区域 | 结论 |
+|------|------|
+| `App_EthPoll` | T1 已改为逐帧关中断；`lwip_periodic` 仍短临界区，可接受 |
+| `jetson_eth.c` | `udp_sendto` 前关中断，范围小 |
+| `app_boot.c` | 以太网模式 **跳过 USART2 init**（v1.4+）；`App_EthInit` 在测距 **之后** |
+| `distance_sensor.c` | 独占 `USART3_IRQHandler`；与 `usart3.c` **不同 USART 硬件** |
+| `app_boot.h` | `APP_SENSOR_TEST_ONLY=1` 可关 ETH/GPS/CAN 做 **纯测距联调** |
+| `rs485.c` / `rs232.c` | `USART2_IRQHandler` 仅在 `RS485_ENABLE` 等宏下编译；默认不链入 |
+| `vJetsonTask` | 以太网模式仍调 `USART3_GetServiceRequest` 无害（无 init 则无数据） |
+| `agv_blob_link.h` | RS232 / ETH 发送 **互斥**，不会双发 |
+| 遗留风险 | TIM3 与测距 USART3 同优先级 **1**；日志过多 **T6**；若仍测距丢包可升测距 IRQ 到 **0** |
+
+### 15.10 快速排障对照
+
+| 你的现象 | 优先查 |
+|----------|--------|
+| ping 通，测距全 `---` / 65535 | **T1**（固件是否含 App_EthPoll 修复）；**§15.11 供电**；PB10/11 接线 |
+| RS232 有收无发 | **P1** `ETH_LWIP_ENABLE=1` |
+| `ARB=DEGRADED` | **L3** 上位机未发 0x01 |
+| SSH / ping 网关超时 | **N1/N2** Jetson 双网卡 |
+| 抓不到 UDP 50002 | **N3** 防火墙 |
+| `[DS] RX timeout` 且 `rx>0` | **T1** 收帧中丢字节 |
+| `rx=0, skip=0, raw=(none)`，`trig` 在涨 | **§15.11 供电/GND**；PB10 触发线；非软件/以太网问题 |
+| `rx>0, skip≈rx, FF=0` | 波特率错（应 **9600**）或 TX/RX 接反 |
+| `FF≥1, chk>0, ok=0` | 有帧头但校验失败：线材干扰、接触不良 |
+| 同一固件有时 `rx=12` 有时 `rx=0` | **供电不稳或杜邦线接触不良**（实验室已确认） |
+
+### 15.11 测距无数据：E08 供电问题（2026-06 实验室确认）
+
+本节记录 **SENSOR_TEST_ONLY 独占测距联调** 中已定位的根因：**E08 四路测距转接模组供电不足或不稳定**。与以太网 lwIP、Jetson BLOB、PA2 MDIO **无因果关系**。
+
+#### 现象与日志特征
+
+固件开启 `APP_SENSOR_TEST_ONLY=1`（`app_boot.h`）后，串口应出现：
+
+```text
+[BOOT] SENSOR_TEST_ONLY: ETH/GPS/CAN/Jetson/Arbiter OFF
+[DS] HW PB10 MOD=2 AF10=7 | PB11 MOD=2 AF11=7
+[DS TEST] ... proc=... trig=... rx=... skip=... FF=... chk=... raw=...
+```
+
+| 日志组合 | 软件侧结论 | 硬件侧优先查 |
+|----------|------------|--------------|
+| `trig` 持续增长，`rx=0`，`skip=0`，`raw=(none)` | TIM4 触发正常，**PB11 未收到任何字节** | **E08 5V 供电、GND 共地、模组是否上电** |
+| 同一固件偶发 `rx=12` 后长期 `rx=0` | 曾收到乱码/不完整数据后模组停发 | **供电跌落、杜邦线松动** |
+| `[DS] HW ... MOD=2 AF=7`，`UE=1` | MCU 引脚与 USART3 配置正确 | 排除“改以太网代码改坏引脚” |
+
+> **勿误判为以太网冲突**：RMII 不使用 PB10/PB11；独占测距模式下 ETH 已编译关闭，仍 `rx=0` 时应查 **模组供电**，而非 lwIP/UDP。
+
+#### 根因说明
+
+- E08 转接板需 **稳定 5V** 为四路探头 + UART 电路供电。
+- 若仅通过开发板 **5V 排针 + 细杜邦线** 长距离供电，或与其他大电流负载（电机、以太网 PHY、WiFi）共用，会出现：
+  - 上电瞬间模组无响应 → `rx=0`；
+  - 偶发回几个字节后停发 → 与实验室观测 `rx=12` 后归零一致；
+  - 压降导致 UART 波形异常 → `skip>0` 但 `FF=0`（乱码，非帧头 `0xFF`）。
+
+#### 推荐接线与供电
+
+| 项目 | 要求 |
+|------|------|
+| E08 **VCC** | **独立 5V 电源**（≥500mA 余量）或专用 DC 模块，勿与电机驱动共用一个弱 5V |
+| **GND** | E08 GND 与 **F407 开发板 GND 必须共地** |
+| **UART** | 模组 TX → **PB11**（MCU RX）；触发/UART → **PB10**；**9600 8N1** |
+| 杜邦线 | 插紧；`rx` 时有时无优先重插 **VCC/GND/PB10/PB11** |
+
+#### 固件侧独占测距开关（便于定责）
+
+`APP/freertos/app_boot.h`：
+
+```c
+#define APP_SENSOR_TEST_ONLY  1   /* 1=仅测距；自动 ETH_LWIP_ENABLE=0 */
+```
+
+- `1`：只跑 TIM4 + USART3 + LCD + `[DS TEST]` 诊断，排除 Jetson/以太网干扰。
+- 测距恢复正常后改回 `0`，Rebuild，再开以太网 BLOB 联调。
+
+#### 供电修复后的验收
+
+1. `[DS TEST]` 中 `rx` 持续增加，`FF≥1`，`ok≥1`（或 LCD 四向出现 `xxx mm`）。
+2. 恢复 `APP_SENSOR_TEST_ONLY=0`，确认 `[DS ETH]` 或 `[DS]` 在以太网模式下仍正常（需 **T1** `App_EthPoll` 修复已合入）。
+
+### 15.12 以太网 TimeSync（0xA5 服务帧，2026-06 已合入）
+
+Jetson `eth_gateway` 经 **UDP :50001** 发 **11B** `[0xA5][ID][8B]`；MCU 在 `JetsonEth_OnUdpRx` 按首字节分流：
+
+| `payload[0]` | 处理 |
+|:--:|------|
+| `0xAB` | 现有 BLOB v2 入队（不变） |
+| `0xA5` | 服务帧入队 → `vJetsonTask` → `JetsonCAN_HandleServiceRequest(0x107, …)` |
+| 其它 | `svc_reject++` |
+
+**0x108 响应**：`JetsonLink_Deliver8()` 在 `JETSON_LINK_ETH=1` 时走 `JetsonEth_SendServiceFrame()` → **UDP Peer :50002**（11B，非 BLOB）。
+
+**边界**：0x107/0x108 **不**调用 `Arbiter_UpdateHeartbeat()`；心跳仍只看 BLOB **MSG 0x01** seq。
+
+**联调日志**：
+
+```text
+[ETH SVC] first 0x107 cmd=0x02 START
+[ETH SVC] tx 0x108 cmd=0x02
+[JETSON LINK] +5s: ... svc=... 107=... tx108=... svc_rej=...
+```
+
+**代码**：`APP/jetson_eth/jetson_eth.c`、`jetson_can.c`（`JetsonLink_Deliver8`）、`rtos_tasks.c`（`vJetsonTask` 服务帧循环）。
+
+---
+
 *文档维护：接入实现后请更新「状态」列，并在 [硬件连接与通信协议.md](./硬件连接与通信协议.md) 总表增加以太网一行。*
+

@@ -69,3 +69,5 @@
 .\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_wire.h
 .\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_pack.h
 .\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_rs232.h
+.\obj\rtos_tasks.o: .\APP\agv_blob\agv_blob_link.h
+.\obj\rtos_tasks.o: .\APP\jetson_eth\jetson_eth.h

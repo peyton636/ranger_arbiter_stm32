@@ -1,4 +1,5 @@
 #include "freertos_app.h"
+#include "jetson_eth.h"
 #include "rtos_config.h"
 #include "rtos_tasks.h"
 #include "motion_ui_shared.h"
@@ -33,7 +34,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 void App_SharedInit(void)
 {
 	Usart_PrintMutexInit();
-#if !JETSON_LINK_CAN
+#if !JETSON_LINK_CAN && !JETSON_LINK_ETH
 	USART3_TxMutexInit();
 #endif
 	MotionUI_SharedInit();
@@ -42,6 +43,15 @@ void App_SharedInit(void)
 void App_TasksCreate(void)
 {
 	RTOS_PRINT("[RTOS] Creating tasks\r\n");
+
+#if APP_SENSOR_TEST_ONLY
+	CREATE_TASK(vSensorTask, "Sensor", SENSOR_TASK_STACK_SIZE, SENSOR_TASK_PRIO, &xSensorTaskHandle);
+	CREATE_TASK(vKeyTask, "Key", KEY_TASK_STACK_SIZE, KEY_TASK_PRIO, &xKeyTaskHandle);
+	CREATE_TASK(vUiTask, "Ui", UI_TASK_STACK_SIZE, UI_TASK_PRIO, &xUiTaskHandle);
+	MotionUI_SetUiTaskHandle(xUiTaskHandle);
+	RTOS_PRINT("[RTOS] SENSOR_TEST_ONLY: Sensor+Key+Ui only\r\n");
+	return;
+#endif
 
 	CREATE_TASK(vMotionTask, "Motion", MOTION_TASK_STACK_SIZE, MOTION_TASK_PRIO, &xMotionTaskHandle);
 	CREATE_TASK(vCanTask, "Can", CAN_TASK_STACK_SIZE, CAN_TASK_PRIO, &xCanTaskHandle);

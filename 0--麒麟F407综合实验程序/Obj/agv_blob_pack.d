@@ -40,6 +40,9 @@
 .\obj\agv_blob_pack.o: APP\agv_blob\agv_blob_rs232.h
 .\obj\agv_blob_pack.o: .\APP\arbiter\arbiter.h
 .\obj\agv_blob_pack.o: .\APP\gps\gps.h
+.\obj\agv_blob_pack.o: APP\agv_blob\agv_blob_link.h
+.\obj\agv_blob_pack.o: .\APP\freertos\app_boot.h
+.\obj\agv_blob_pack.o: .\APP\jetson_eth\jetson_eth.h
 .\obj\agv_blob_pack.o: .\APP\beep\beep.h
 .\obj\agv_blob_pack.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
 .\obj\agv_blob_pack.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h

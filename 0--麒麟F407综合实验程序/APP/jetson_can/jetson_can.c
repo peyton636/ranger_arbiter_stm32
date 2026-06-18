@@ -3,6 +3,7 @@
 #include "distance_sensor.h"
 #include "beep.h"
 #include "usart3.h"
+#include "jetson_eth.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stdio.h"
@@ -29,7 +30,9 @@ static u32 JetsonCAN_NowMs(void)
 
 static void JetsonLink_Deliver8(u32 can_id, const u8 *payload, u8 len)
 {
-#if JETSON_LINK_CAN
+#if JETSON_LINK_ETH
+	JetsonEth_SendServiceFrame(can_id, payload, len);
+#elif JETSON_LINK_CAN
 	CAN2_Send_Msg_WithID(can_id, (u8 *)payload, len);
 #else
 	USART3_SendServiceFrame(can_id, payload, len);
