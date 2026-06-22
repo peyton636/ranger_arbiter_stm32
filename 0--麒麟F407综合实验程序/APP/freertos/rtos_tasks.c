@@ -402,6 +402,9 @@ void vNetTask(void *pvParameters)
 			if(App_EthIsReady())
 			{
 				App_EthGetStats(&rx, &link);
+#if APP_LCD_MINIMAL_TEST
+				USART1_Probe("HB");
+#endif
 				printf("[ETH] link=%s rx=%lu tx_ok=%lu rbus=%u desc_cpu=%u (rx=0=no L2 frames)\r\n",
 					link ? "UP" : "DOWN", (unsigned long)rx,
 					(unsigned long)ETH_TxOkCount(),
@@ -423,6 +426,11 @@ void vUiTask(void *pvParameters)
 	for(;;)
 	{
 		(void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(UI_TASK_NOTIFY_TIMEOUT_MS));
+
+#if APP_LCD_MINIMAL_TEST
+		DistanceSensor_DrainLog();
+		continue;
+#endif
 
 		ds = DistanceSensor_GetData();
 		now = xTaskGetTickCount();

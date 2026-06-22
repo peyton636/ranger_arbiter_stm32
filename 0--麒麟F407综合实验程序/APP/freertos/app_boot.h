@@ -16,6 +16,9 @@
 /* FreeRTOS 下在 Net 任务轮询收包，避免 ETH IRQ 与 lwip_periodic_handle 重入 */
 #define ETH_RX_POLL_ONLY  1
 
+/* 1=LCD 仅清屏显示 "test"，关闭 SensorUI/Chassis 刷新（串口联调） */
+#define APP_LCD_MINIMAL_TEST  0
+
 void App_MotionHwInit(void);
 void App_ShowBootSplash(void);
 

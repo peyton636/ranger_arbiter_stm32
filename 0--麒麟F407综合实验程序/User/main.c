@@ -189,6 +189,7 @@ REINIT:// 重新初始化
 	SysTick_Init(168);				// 延时初始化
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);  // 中断优先级分组 2
 	USART1_Init(115200);		// 初始化串口1，波特率 115200
+	USART1_Probe("HWCHK");
  	LED_Init();					// 初始化 LED
  	TFTLCD_Init();					// LCD 初始化
  	BEEP_Init();				// 蜂鸣器初始化
@@ -522,9 +523,9 @@ int main()
 	printf("[BOOT] UI_MODE=1 (arbiter_gui)\r\n");
 	App_MotionHwInit();
 	
-#if CHASSIS_CAN_MOTION_TEST
-	ChassisCanTest_RunOnce();
-#endif
+	#if CHASSIS_CAN_MOTION_TEST
+		ChassisCanTest_RunOnce();
+	#endif
 	
 	App_ShowBootSplash();
 	RTOS_AppStart();
@@ -535,6 +536,6 @@ int main()
 	App_ShowBootSplash();
 	RTOS_AppStart();
 #else
-#error "UI_TEST_MODE must be 0, 1, or 2"
+	#error "UI_TEST_MODE must be 0, 1, or 2"
 #endif
 }

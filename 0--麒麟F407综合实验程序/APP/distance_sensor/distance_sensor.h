@@ -66,6 +66,8 @@ u16 DistanceSensor_GetNearestDistance(void);
 u16 DistanceSensor_NormalizedMm(u8 idx);
 u16 DistanceSensor_MinDistMm(void);
 u16 DistanceSensor_GetFilteredMm(u8 idx);
+/* stable_mm 最后一次变化时的 MCU ms（与 0x108 PING tick 同域） */
+u32 DistanceSensor_GetStableStampMs(u8 idx);
 u16 DistanceSensor_GetFilteredMinDistMm(void);
 u16 DistanceSensor_GetArbiterMm(u8 idx);
 void DistanceSensor_DrainLog(void);

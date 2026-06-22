@@ -39,3 +39,13 @@
 .\obj\distance_sensor.o: .\Public\usart.h
 .\obj\distance_sensor.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\obj\distance_sensor.o: .\APP\time\time.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
+.\obj\distance_sensor.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\obj\distance_sensor.o: .\User\FreeRTOSConfig.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\include\projdefs.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\include\portable.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\include\deprecated_definitions.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F\portmacro.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\include\mpu_wrappers.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\include\task.h
+.\obj\distance_sensor.o: .\Middlewares\FreeRTOS\include\list.h

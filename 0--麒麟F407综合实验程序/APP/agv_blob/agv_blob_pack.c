@@ -4,6 +4,7 @@
 
 #include "agv_blob_link.h"
 #include "beep.h"
+#include "distance_sensor.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stdio.h"
@@ -54,6 +55,22 @@ static void BlobPack_PutU32BE(u8 *buf, u16 idx, u32 v)
 static void BlobPack_PutS32BE(u8 *buf, u16 idx, s32 v)
 {
 	BlobPack_PutU32BE(buf, idx, (u32)v);
+}
+
+/* Phase2：BlobLink_Send 前一刻写 byte0~3 timestamp_ms */
+static u8 BlobPack_SendLink(u8 msg_id, u8 seq, u8 *p, u16 payload_len)
+{
+	BlobPack_PutU32BE(p, 0, BlobPack_NowMs());
+	return BlobLink_Send(msg_id, seq, p, payload_len);
+}
+
+static void BlobPack_PutSonarStamps(u8 *p, u16 base_idx)
+{
+	u8 i;
+
+	for(i = 0; i < 4; i++)
+		BlobPack_PutU32BE(p, (u16)(base_idx + (u16)(i * 4u)),
+			DistanceSensor_GetStableStampMs(i));
 }
 
 static u16 BlobPack_GetU16BE(const u8 *buf, u16 idx)
@@ -205,12 +222,10 @@ static void BlobPack_ApplySensorCfg(const u8 *p)
 static u8 BlobPack_SendMotion(const ArbiterState_t *state)
 {
 	u8 p[BLOB_PAYLOAD_MOTION];
-	u32 ts = BlobPack_NowMs();
 
 	if(!state)
 		return 0;
 
-	BlobPack_PutU32BE(p, 0, ts);
 	p[4] = state->sys_status.system_status;
 	p[5] = state->motion_mode_fb.motion_mode;
 	p[6] = (u8)((state->motion_mode_fb.motion_mode & 0x0F) |
@@ -234,37 +249,30 @@ static u8 BlobPack_SendMotion(const ArbiterState_t *state)
 	p[38] = 0;
 	p[39] = 0;
 
-	return BlobLink_Send(BLOB_MSG_MOTION, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTION);
+	return BlobPack_SendLink(BLOB_MSG_MOTION, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTION);
 }
 
 static u8 BlobPack_SendSensor(u16 f, u16 b, u16 l, u16 r)
 {
 	u8 p[BLOB_PAYLOAD_SENSOR];
-	u32 ts = BlobPack_NowMs();
 
-	BlobPack_PutU32BE(p, 0, ts);
 	BlobPack_PutU16BE(p, 4, f);
 	BlobPack_PutU16BE(p, 6, b);
 	BlobPack_PutU16BE(p, 8, l);
 	BlobPack_PutU16BE(p, 10, r);
-	BlobPack_PutU32BE(p, 12, ts);
-	BlobPack_PutU32BE(p, 16, ts);
-	BlobPack_PutU32BE(p, 20, ts);
-	BlobPack_PutU32BE(p, 24, ts);
+	BlobPack_PutSonarStamps(p, 12);
 
-	return BlobLink_Send(BLOB_MSG_SENSOR, s_blob_tx_seq++, p, BLOB_PAYLOAD_SENSOR);
+	return BlobPack_SendLink(BLOB_MSG_SENSOR, s_blob_tx_seq++, p, BLOB_PAYLOAD_SENSOR);
 }
 
 static u8 BlobPack_SendMcuStatus(const ArbiterState_t *state,
 	u16 f, u16 b, u16 l, u16 r, u16 nearest_mm)
 {
 	u8 p[BLOB_PAYLOAD_MCU_STATUS];
-	u32 ts = BlobPack_NowMs();
 
 	if(!state)
 		return 0;
 
-	BlobPack_PutU32BE(p, 0, ts);
 	p[4] = s_blob_tx_seq;
 	p[5] = BlobPack_MapSafetyState(state->current_mode);
 	p[6] = BlobPack_BuildLinkFlags(state);
@@ -276,15 +284,12 @@ static u8 BlobPack_SendMcuStatus(const ArbiterState_t *state,
 	BlobPack_PutU16BE(p, 16, b);
 	BlobPack_PutU16BE(p, 18, l);
 	BlobPack_PutU16BE(p, 20, r);
-	BlobPack_PutU32BE(p, 22, ts);
-	BlobPack_PutU32BE(p, 26, ts);
-	BlobPack_PutU32BE(p, 30, ts);
-	BlobPack_PutU32BE(p, 34, ts);
+	BlobPack_PutSonarStamps(p, 22);
 	BlobPack_PutU16BE(p, 38, nearest_mm);
 	p[40] = state->last_jetson_seq;
 	p[41] = 0;
 
-	return BlobLink_Send(BLOB_MSG_MCU_STATUS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MCU_STATUS);
+	return BlobPack_SendLink(BLOB_MSG_MCU_STATUS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MCU_STATUS);
 }
 
 static void BlobPack_PackMotorCompact(u8 *dst, const ArbiterState_t *state, u8 motor_idx)
@@ -300,25 +305,21 @@ static void BlobPack_PackMotorCompact(u8 *dst, const ArbiterState_t *state, u8 m
 static u8 BlobPack_SendMotorBlock(u8 msg_id, u8 base_motor)
 {
 	u8 p[BLOB_PAYLOAD_MOTOR04];
-	u32 ts = BlobPack_NowMs();
 	u8 i;
 
-	BlobPack_PutU32BE(p, 0, ts);
 	for(i = 0; i < 4; i++)
 		BlobPack_PackMotorCompact(&p[4 + i * 10], &arb_state, (u8)(base_motor + i));
 
-	return BlobLink_Send(msg_id, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR04);
+	return BlobPack_SendLink(msg_id, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR04);
 }
 
 static u8 BlobPack_SendEnergy(const ArbiterState_t *state)
 {
 	u8 p[BLOB_PAYLOAD_ENERGY];
-	u32 ts = BlobPack_NowMs();
 
 	if(!state)
 		return 0;
 
-	BlobPack_PutU32BE(p, 0, ts);
 	BlobPack_PutS32BE(p, 4, state->odometer.front_left);
 	BlobPack_PutS32BE(p, 8, state->odometer.front_right);
 	BlobPack_PutS32BE(p, 12, state->odometer.rear_left);
@@ -342,23 +343,21 @@ static u8 BlobPack_SendEnergy(const ArbiterState_t *state)
 	p[39] = 0;
 	p[40] = 0;
 
-	return BlobLink_Send(BLOB_MSG_ENERGY, s_blob_tx_seq++, p, BLOB_PAYLOAD_ENERGY);
+	return BlobPack_SendLink(BLOB_MSG_ENERGY, s_blob_tx_seq++, p, BLOB_PAYLOAD_ENERGY);
 }
 
 static u8 BlobPack_SendMotorPos(const ArbiterState_t *state)
 {
 	u8 p[BLOB_PAYLOAD_MOTOR_POS];
-	u32 ts = BlobPack_NowMs();
 	u8 i;
 
 	if(!state)
 		return 0;
 
-	BlobPack_PutU32BE(p, 0, ts);
 	for(i = 0; i < 8; i++)
 		BlobPack_PutS32BE(p, (u16)(4 + i * 4), state->motor_high[i].position);
 
-	return BlobLink_Send(BLOB_MSG_MOTOR_POS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR_POS);
+	return BlobPack_SendLink(BLOB_MSG_MOTOR_POS, s_blob_tx_seq++, p, BLOB_PAYLOAD_MOTOR_POS);
 }
 
 void BlobPack_HandleDownlink(const blob_rx_frame_t *frame)
@@ -549,7 +548,6 @@ void BlobPack_SendGps(const GPS_Data_t *gps)
 	s16 heading_x100 = 0;
 	s16 alt_dm = (s16)0x7FFF;
 	u8 heading_valid;
-	u32 ts = BlobPack_NowMs();
 
 	if(!gps)
 		return;
@@ -589,7 +587,6 @@ void BlobPack_SendGps(const GPS_Data_t *gps)
 	if(heading_valid)
 		heading_x100 = (s16)(gps->heading_deg * 100.0f);
 
-	BlobPack_PutU32BE(p, 0, ts);
 	p[4] = flags;
 	p[5] = gps->num_sv;
 	BlobPack_PutU16BE(p, 6, hdop_x100);
@@ -606,7 +603,7 @@ void BlobPack_SendGps(const GPS_Data_t *gps)
 	p[30] = 0;
 	p[31] = 0;
 
-	BlobLink_Send(BLOB_MSG_GPS, s_blob_tx_seq++, p, BLOB_PAYLOAD_GPS);
+	BlobPack_SendLink(BLOB_MSG_GPS, s_blob_tx_seq++, p, BLOB_PAYLOAD_GPS);
 }
 
 #endif

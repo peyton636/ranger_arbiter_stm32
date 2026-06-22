@@ -7,6 +7,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stdio.h"
+#include "rtc.h"
 
 #define JETSON_CAN_RX_DEBUG       0
 #define JETSON_TIME_SVC_DEBUG     0
@@ -245,6 +246,8 @@ static u8 JetsonCAN_BuildTimeFlags(void)
 
 	if(GPS_HasFix() && GPS_GetUtcUnixSec() != 0)
 		flags |= JETSON_TIME_FLAG_GPS_UTC;
+	if(RTC_ReadBackupRegister(RTC_BKP_DR0) == 0x5050u)
+		flags |= JETSON_TIME_FLAG_RTC_VALID;
 	return flags;
 }
 

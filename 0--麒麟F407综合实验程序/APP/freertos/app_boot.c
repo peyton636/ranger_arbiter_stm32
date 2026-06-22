@@ -12,6 +12,7 @@
 #include "SysTick.h"
 #include "malloc.h"
 #include "stdio.h"
+#include "usart.h"
 #include "agv_blob_wire.h"
 #if ETH_LWIP_ENABLE
 #include "lwip_comm.h"
@@ -129,6 +130,7 @@ void App_EthGetStats(u32 *rx_frames, u8 *link_up)
 
 void App_MotionHwInit(void)
 {
+	USART1_Probe("MOTION");
 	/* PRECHIN 在 Hardware_Check 里开了 TIM2(100ms) 拍照中断，ISR 内 KEY_Scan+delay_ms 与 KeyTask 冲突 */
 	TIM_Cmd(TIM2, DISABLE);
 	TIM_ITConfig(TIM2, TIM_IT_Update, DISABLE);
@@ -206,6 +208,8 @@ void App_MotionHwInit(void)
 #if ETH_LWIP_ENABLE
 	/* 必须放在 USART3_Init 之后：PA2 与 ETH_MDIO 复用，以太网 init 会最后占住 PA2 */
 	App_EthInit();
+	USART1_Init(115200);
+	USART1_Probe("ETHOK");
 #if !JETSON_LINK_CAN
 	printf("[ETH] PA2=ETH_MDIO after init; Jetson RS232 TX(PA2) disabled while ETH on\r\n");
 #endif
@@ -217,9 +221,15 @@ void App_ShowBootSplash(void)
 	LCD_Clear(BLACK);
 	FRONT_COLOR = WHITE;
 	BACK_COLOR = BLACK;
+#if APP_LCD_MINIMAL_TEST
+	LCD_ShowString(10, 120, tftlcd_data.width, tftlcd_data.height, 24, "test");
+	USART1_Probe("LCD");
+	printf("[LCD] MINIMAL test screen (SensorUI off)\r\n");
+#else
 	SensorUI_DrawStatic();
 	SensorUI_UpdateDistances(DistanceSensor_GetData());
 	SensorUI_UpdateBeepStatus();
 	SensorUI_UpdateGps();
 	printf("[LCD] Sensor UI ready; layout=pre-RTOS + GPS\r\n");
+#endif
 }

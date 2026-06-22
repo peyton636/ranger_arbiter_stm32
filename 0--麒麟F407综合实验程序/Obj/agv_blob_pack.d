@@ -44,6 +44,7 @@
 .\obj\agv_blob_pack.o: .\APP\freertos\app_boot.h
 .\obj\agv_blob_pack.o: .\APP\jetson_eth\jetson_eth.h
 .\obj\agv_blob_pack.o: .\APP\beep\beep.h
+.\obj\agv_blob_pack.o: .\APP\distance_sensor\distance_sensor.h
 .\obj\agv_blob_pack.o: .\Middlewares\FreeRTOS\include\FreeRTOS.h
 .\obj\agv_blob_pack.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
 .\obj\agv_blob_pack.o: .\User\FreeRTOSConfig.h

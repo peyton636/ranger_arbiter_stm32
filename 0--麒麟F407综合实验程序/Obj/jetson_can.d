@@ -57,3 +57,4 @@
 .\obj\jetson_can.o: .\Middlewares\FreeRTOS\include\task.h
 .\obj\jetson_can.o: .\Middlewares\FreeRTOS\include\list.h
 .\obj\jetson_can.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\obj\jetson_can.o: .\APP\rtc\rtc.h

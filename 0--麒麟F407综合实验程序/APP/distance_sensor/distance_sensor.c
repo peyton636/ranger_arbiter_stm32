@@ -2,6 +2,8 @@
 #include "usart.h"
 #include "stdio.h"
 #include "time.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 static DistanceSensor_Data ds_data;
 static u8 ds_rx_buf[DS_FRAME_LEN];
@@ -21,6 +23,7 @@ typedef struct
 	DsFilterSample_t buf[DS_FILTER_MAX_SAMPLES];
 	u8 count;
 	u16 stable_mm;
+	u32 stable_stamp_ms;
 	u8 stable_valid;
 } DsChannelFilter_t;
 
@@ -183,6 +186,13 @@ static u16 DistanceSensor_AbsDiffU16(u16 a, u16 b)
 	return (a >= b) ? (u16)(a - b) : (u16)(b - a);
 }
 
+static u32 DistanceSensor_NowMs(void)
+{
+	return (u32)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+static void DistanceSensor_UpdateArbEma(u8 ch, u16 stable);
+
 static void DistanceSensor_FilterReset(void)
 {
 	u8 i;
@@ -191,8 +201,20 @@ static void DistanceSensor_FilterReset(void)
 	{
 		ds_filter[i].count = 0;
 		ds_filter[i].stable_mm = DS_DIST_UNKNOWN;
+		ds_filter[i].stable_stamp_ms = 0;
 		ds_filter[i].stable_valid = 0;
 	}
+}
+
+static void DistanceSensor_SetStable(u8 ch, u16 new_stable)
+{
+	DsChannelFilter_t *f = &ds_filter[ch];
+
+	if(!f->stable_valid || f->stable_mm != new_stable)
+		f->stable_stamp_ms = DistanceSensor_NowMs();
+	f->stable_mm = new_stable;
+	f->stable_valid = 1;
+	DistanceSensor_UpdateArbEma(ch, new_stable);
 }
 
 static u8 DistanceSensor_FilterSampleKind(u16 mm)
@@ -339,29 +361,24 @@ static void DistanceSensor_FilterPushChannel(u8 ch, u16 mm)
 	if(n_valid >= DS_FILTER_MIN_SAMPLES)
 	{
 		new_stable = DistanceSensor_FilterMedian(valid_buf, n_valid);
-		f->stable_mm = new_stable;
-		f->stable_valid = 1;
-		DistanceSensor_UpdateArbEma(ch, new_stable);
+		DistanceSensor_SetStable(ch, new_stable);
 		return;
 	}
 	if(n_valid == 1)
 	{
-		f->stable_mm = valid_buf[0];
-		f->stable_valid = 1;
-		DistanceSensor_UpdateArbEma(ch, valid_buf[0]);
+		DistanceSensor_SetStable(ch, valid_buf[0]);
 		return;
 	}
 	if(n_fail >= DS_FILTER_MIN_SAMPLES && n_valid == 0)
 	{
-		f->stable_mm = DS_DIST_FAILSAFE_MM;
-		f->stable_valid = 1;
-		DistanceSensor_UpdateArbEma(ch, DS_DIST_FAILSAFE_MM);
+		DistanceSensor_SetStable(ch, DS_DIST_FAILSAFE_MM);
 		return;
 	}
 	if(f->count == 0)
 	{
 		f->stable_valid = 0;
 		f->stable_mm = DS_DIST_UNKNOWN;
+		f->stable_stamp_ms = 0;
 	}
 }
 
@@ -385,6 +402,7 @@ static void DistanceSensor_FilterOnNewFrame(void)
 				ds_filter[i].count = 0;
 				ds_filter[i].stable_valid = 0;
 				ds_filter[i].stable_mm = DS_DIST_UNKNOWN;
+				ds_filter[i].stable_stamp_ms = 0;
 			}
 		}
 	}
@@ -739,6 +757,15 @@ u16 DistanceSensor_GetFilteredMm(u8 idx)
 	if(!ds_filter[idx].stable_valid)
 		return DS_DIST_UNKNOWN;
 	return ds_filter[idx].stable_mm;
+}
+
+u32 DistanceSensor_GetStableStampMs(u8 idx)
+{
+	if(idx >= 4)
+		return 0;
+	if(!ds_filter[idx].stable_valid)
+		return 0;
+	return ds_filter[idx].stable_stamp_ms;
 }
 
 u16 DistanceSensor_GetFilteredMinDistMm(void)
