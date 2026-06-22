@@ -1,5 +1,5 @@
 #include "agv_blob_rs232.h"
-#include "usart3.h"
+#include "rs232.h"
 
 #if !JETSON_LINK_CAN
 
@@ -148,7 +148,7 @@ u8 BlobRs232_Send(u8 msg_id, u8 seq, const u8 *payload, u16 payload_len)
 			wire[BLOB_HDR_SIZE + i] = payload[i];
 	}
 
-	USART3_SendData(wire, wire_len);
+	RS232_SendData(wire, wire_len);
 	s_tx_bytes += wire_len;
 	s_tx_frames++;
 	if(msg_id == BLOB_MSG_MOTION)

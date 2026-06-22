@@ -7,7 +7,7 @@
 #include "sensor_ui.h"
 #include "arbiter.h"
 #include "can.h"
-#include "usart3.h"
+#include "rs232.h"
 #include "jetson_can.h"
 #include "gps.h"
 #include "app_boot.h"
@@ -40,14 +40,20 @@ TaskHandle_t xNetTaskHandle     = NULL;
 #endif
 
 static u16 s_can_lcd_div = 0;
-static u8 s_jetson_tx_toggle = 0;
 static u32 s_ui_frame_count = 0;
+#if RTOS_VERBOSE_STACK_LOG
 static TickType_t s_ui_last_stack_log = 0;
+#endif
+#if !(JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN)
+static u8 s_jetson_tx_toggle = 0;
+#endif
 
 #if !JETSON_LINK_CAN && JETSON_USE_BLOB_V2 && RTOS_VERBOSE_JETSON_LINK
 static u16 s_gps_link_div = 0;
+#if !JETSON_LINK_ETH
 static u32 s_link_last_rx_b = 0;
 static u32 s_link_last_ab = 0;
+#endif
 static u32 s_link_last_tx_b = 0;
 static u32 s_link_last_m02 = 0;
 static u32 s_link_last_m03 = 0;
@@ -61,14 +67,16 @@ static u32 s_link_last_svc_rej = 0;
 /* 在 vGpsTask 定时打印，不依赖 vJetsonTask 循环计数 */
 static void JetsonLink_TickEvery5s(void)
 {
-	u32 rx_b = 0, ore = 0, ab = 0;
 	u32 tx_b, tx_f, tx_m02, tx_m03;
-	u32 ctrl, db = 0, dab = 0, dtx, dm02, dm03;
+	u32 ctrl, dtx, dm02, dm03;
 	u16 ds_f, ds_b, ds_l, ds_r, ds_n;
 	u8 arb, hb_lost;
 #if JETSON_LINK_ETH
 	u32 svc_rx, svc_107, svc_tx108, svc_rej;
 	u32 dsvc, d107, dtx108, drej;
+#else
+	u32 rx_b = 0, ore = 0, ab = 0;
+	u32 db = 0, dab = 0;
 #endif
 
 	if(++s_gps_link_div < 50)
@@ -86,7 +94,7 @@ static void JetsonLink_TickEvery5s(void)
 	s_link_last_svc_tx108 = svc_tx108;
 	s_link_last_svc_rej = svc_rej;
 #else
-	USART3_GetRxStats(&rx_b, &ore, &ab);
+	RS232_GetRxStats(&rx_b, &ore, &ab);
 	db = rx_b - s_link_last_rx_b;
 	dab = ab - s_link_last_ab;
 	s_link_last_rx_b = rx_b;
@@ -233,16 +241,21 @@ void vSensorTask(void *pvParameters)
 		if(++ds_diag_log_div >= 200)
 		{
 			char ff[16], bb[16], ll[16], rr[16];
-			u32 ds_rx, ds_ok, ds_proc, ds_trig, ds_poll;
+			u32 ds_rx, ds_ok;
 			u32 ds_skip, ds_hdr, ds_chk;
 			char rxhex[40];
+#if APP_SENSOR_TEST_ONLY
+			u32 ds_proc, ds_trig, ds_poll;
+#endif
 
 			ds_diag_log_div = 0;
 			DistSnapshot_Read(&f, &b, &l, &r, &n);
 			DistanceSensor_GetDiag(&ds_rx, &ds_ok);
+#if APP_SENSOR_TEST_ONLY
 			ds_proc = DistanceSensor_GetProcessTick();
 			ds_trig = DistanceSensor_GetTrigCount();
 			ds_poll = DistanceSensor_GetPollRxBytes();
+#endif
 			DistanceSensor_GetRxParseDiag(&ds_skip, &ds_hdr, &ds_chk);
 			DistanceSensor_FormatLastRxHex(rxhex, sizeof(rxhex));
 			DistanceSensor_FormatFilteredLane(0, ff, sizeof(ff));
@@ -282,8 +295,10 @@ void vKeyTask(void *pvParameters)
 void vJetsonTask(void *pvParameters)
 {
 	TickType_t xLastWakeTime = xTaskGetTickCount();
-	u8 jetson_frame[JETSON_FRAME_LEN];
 	u16 f, b, l, r, n;
+#if JETSON_LINK_CAN || !JETSON_USE_BLOB_V2
+	u8 jetson_frame[JETSON_FRAME_LEN];
+#endif
 
 	(void)pvParameters;
 
@@ -308,7 +323,7 @@ void vJetsonTask(void *pvParameters)
 			u32 svc_id;
 			u8 svc_buf[8];
 
-			if(USART3_GetServiceRequest(&svc_id, svc_buf))
+			if(RS232_GetServiceRequest(&svc_id, svc_buf))
 				JetsonCAN_HandleServiceRequest(svc_id, svc_buf, 8, &arb_state, n);
 		}
 #endif
@@ -325,7 +340,7 @@ void vJetsonTask(void *pvParameters)
 #endif
 
 #if !JETSON_LINK_CAN && !JETSON_USE_BLOB_V2
-		if(USART3_GetJetsonFrame(jetson_frame))
+		if(RS232_GetJetsonFrame(jetson_frame))
 		{
 			if(Arbiter_ParseJetsonCmd(jetson_frame, JETSON_FRAME_LEN) != 0)
 				RTOS_PRINT("[JETSON CMD] parse failed\r\n");
@@ -343,12 +358,12 @@ void vJetsonTask(void *pvParameters)
 #else
 		if(s_jetson_tx_toggle == 0)
 		{
-			USART3_SendV3StatusFrame(&arb_state, f, b, l, r);
+			RS232_SendV3StatusFrame(&arb_state, f, b, l, r);
 			s_jetson_tx_toggle = 1;
 		}
 		else
 		{
-			USART3_SendV3DetailFrame(&arb_state);
+			RS232_SendV3DetailFrame(&arb_state);
 			s_jetson_tx_toggle = 0;
 		}
 #endif
@@ -443,7 +458,9 @@ void vUiTask(void *pvParameters)
 			SensorUI_UpdateBeepStatus();
 			SensorUI_UpdateGps();
 			Chassis_UpdateOnLCD();
+#if RTOS_VERBOSE_STACK_LOG
 			s_ui_last_stack_log = now;
+#endif
 		}
 
 		if(g_beep_ui_dirty)

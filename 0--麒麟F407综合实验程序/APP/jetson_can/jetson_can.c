@@ -2,7 +2,7 @@
 #include "can2.h"
 #include "distance_sensor.h"
 #include "beep.h"
-#include "usart3.h"
+#include "rs232.h"
 #include "jetson_eth.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -36,7 +36,7 @@ static void JetsonLink_Deliver8(u32 can_id, const u8 *payload, u8 len)
 #elif JETSON_LINK_CAN
 	CAN2_Send_Msg_WithID(can_id, (u8 *)payload, len);
 #else
-	USART3_SendServiceFrame(can_id, payload, len);
+	RS232_SendServiceFrame(can_id, payload, len);
 #endif
 }
 
@@ -103,11 +103,8 @@ static void JetsonCAN_OnFrag(const u8 *data, u8 dlc)
 	}
 }
 
-void JetsonCAN_Init(void)
+void Protocol_Init(void)
 {
-#if JETSON_LINK_CAN
-	CAN2_Init_Jetson();
-#endif
 	JetsonCAN_ResetRxAsm();
 	s_rx_frame_ready = 0;
 	s_last_fault_sig = 0;

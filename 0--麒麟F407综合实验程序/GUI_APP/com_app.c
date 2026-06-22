@@ -1,4 +1,4 @@
-#include "com_app.h"
+﻿#include "com_app.h"
 #include "button.h"
 #include "touch.h"
 #include "common.h"
@@ -42,7 +42,7 @@ void CAN_Test(void)//CAN Communication - RANGER MINI 3.0
 	u8 tempbuf[32];
 	u32 can_id=0;
 	
-	CAN1_Init_RangerMini();
+	Arv_TranReceive_Init();
 		
 	FRONT_COLOR=WHITE;  
   	BACK_COLOR=GRAY;  
@@ -290,111 +290,12 @@ void RS485_Test(void)//RS485ͨ�Ų���
 	}
 }
 
-void RS232_Test(void)//RS232ͨ�Ų���
+void RS232_Test(void)
 {
-	_btn_obj* rbtn=0;				//���ذ�ť�ؼ�
-	_btn_obj* sendbtn=0;//�������ݰ���
-	u8 rval=0;
-	u8 key;
-	_memo_obj* memo_send;
-	_memo_obj* memo_recv;
-	_t9_obj * t9=0;		//���뷨
-	u16 t9height=0;		//t9���뷨�߶�
-	
-	RS232_Init(9600);
-	
-	FRONT_COLOR=WHITE;  
-  	BACK_COLOR=GRAY;  
-	LCD_Clear(BACK_COLOR);		//����
-	app_filebrower("RS232ͨ��Ӧ��",0X05);//��ʾ����
-	app_gui_tcbar(0,tftlcd_data.height-gui_phy.tbheight,tftlcd_data.width,gui_phy.tbheight,0x01);	//�Ϸֽ���
-	rbtn=btn_creat(tftlcd_data.width-2*gui_phy.tbfsize-8-1,tftlcd_data.height-gui_phy.tbheight,2*gui_phy.tbfsize+8,gui_phy.tbheight-1,0,0x03);//�������ְ�ť
-	if(!rbtn)rval=1;			//û���㹻�ڴ湻����
-	else
-	{																				
-		rbtn->caption=(u8*)GUI_BACK_CAPTION_TBL[gui_phy.language];//���� 
-		rbtn->font=gui_phy.tbfsize;//�����µ������С	 	 
-		rbtn->bcfdcolor=WHITE;	//����ʱ����ɫ
-		rbtn->bcfucolor=WHITE;	//�ɿ�ʱ����ɫ
-		btn_draw(rbtn);			//�ػ���ť
-	}
-	
-	gui_show_string("��ע�⣺������Ϊ9600",10,gui_phy.tbheight+205,tftlcd_data.width,16,16,GREEN);
-	gui_show_string("���ݷ��ͣ�",10,gui_phy.tbheight+10,tftlcd_data.width,16,16,BLUE);
-	memo_send=memo_creat(10,gui_phy.tbheight+30,tftlcd_data.width-20,50,0,1,16,COM_MAX_DATA_LEN);
-	if(memo_send==NULL)return;//����ʧ��
-	memo_send->text=send_buf;
-	memo_send->textcolor=RED;
-	memo_draw_memo(memo_send,0);
-	
-	sendbtn=btn_creat(tftlcd_data.width/2-25,gui_phy.tbheight+90,50,30,0,0x02);
-	if(!sendbtn)rval=1;			//û���㹻�ڴ湻����
-	else
-	{																				
-		sendbtn->caption="����"; 
-		sendbtn->font=16;//�����µ������С	 	 
-		sendbtn->bcfdcolor=WHITE;	//����ʱ����ɫ
-		sendbtn->bcfucolor=WHITE;	//�ɿ�ʱ����ɫ
-		btn_draw(sendbtn);			//�ػ���ť
-	}
-	gui_show_string("���ݽ��գ�",10,gui_phy.tbheight+130,tftlcd_data.width,16,16,BLUE);
-	memo_recv=memo_creat(10,gui_phy.tbheight+150,tftlcd_data.width-20,50,0,0,16,COM_MAX_DATA_LEN);
-	if(memo_recv==NULL)return;//����ʧ��
-	memo_recv->textcolor=RED;
-	memo_draw_memo(memo_recv,0);
-	
-	if(tftlcd_data.width==800)t9height=548;		//t9���뷨�߶�
-	else if(tftlcd_data.width==600)t9height=368;	//t9���뷨�߶�
-	else if(tftlcd_data.width==480)t9height=266;	//t9���뷨�߶�
-	else if(tftlcd_data.width==320||tftlcd_data.width==272)t9height=176;	//t9���뷨�߶�
-	else if(tftlcd_data.width==240)t9height=134; 		
-	t9=t9_creat((tftlcd_data.width%5)/2,tftlcd_data.height-t9height-gui_phy.tbheight,tftlcd_data.width-(tftlcd_data.width%5),t9height,0); 
-	if(t9==NULL)rval=1;	 
-	else t9_draw(t9);
-	
-	while(rval==0)//��ѭ��
-	{
-		tp_dev.scan(0);    
-		in_obj.get_key(&tp_dev,IN_TYPE_TOUCH);	//�õ�������ֵ   
-		delay_ms(5);
-		
-		t9_check(t9,&in_obj);	
-		memo_check(memo_send,&in_obj);
-		if(t9->outstr[0]!=NULL)//�����ַ�
-		{
-			//printf("%s\r\n",t9->outstr);
-			memo_add_text(memo_send,t9->outstr);
-			t9->outstr[0]=NULL;	 			//�������ַ�
-		}
-		
-		//��ⷵ�ؼ��Ƿ���
-		key=btn_check(rbtn,&in_obj);
-		if(key&&((rbtn->sta&(1<<7))==0)&&(rbtn->sta&(1<<6)))//�а����������ɿ�,����TP�ɿ���
-		{
-			USART_Cmd(USART2, DISABLE);
-			btn_delete(rbtn);
-			btn_delete(sendbtn);
-			memo_delete(memo_send);
-			memo_delete(memo_recv);
-			t9_delete(t9);
-			return;
-		}
-		
-		//��ⷢ�ͼ��Ƿ���
-		key=btn_check(sendbtn,&in_obj);
-		if(key&&((sendbtn->sta&(1<<7))==0)&&(sendbtn->sta&(1<<6)))//�а����������ɿ�,����TP�ɿ���
-		{
-			RS232_SendString(memo_send->text);
-		}
-		
-		if(RS232_RX_STA&0x8000)//���յ�����
-		{
-			RS232_RX_BUF[RS232_RX_STA&0x3fff]='\0';
-			memo_recv->text=RS232_RX_BUF;
-			memo_draw_memo(memo_recv,0);
-			RS232_RX_STA=0;
-		}
-	}
+	LCD_Clear(GRAY);
+	FRONT_COLOR = WHITE;
+	LCD_ShowString(10, 120, tftlcd_data.width, tftlcd_data.height, 16, (u8*)"RS232 demo removed");
+	delay_ms(800);
 }
 
 void COM_APP_Test(void)

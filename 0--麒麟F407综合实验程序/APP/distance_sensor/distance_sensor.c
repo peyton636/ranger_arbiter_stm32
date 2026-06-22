@@ -408,6 +408,7 @@ static void DistanceSensor_FilterOnNewFrame(void)
 	}
 }
 
+/* 硬件 USART3：PB10 触发 / PB11 RX，9600，E08 四路测距 */
 void DistanceSensor_Init(void)
 {
 	GPIO_InitTypeDef GPIO_InitStructure;

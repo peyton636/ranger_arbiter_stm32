@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F40_41xxx,USE_STDPERIPH_DRIVER,USE_USB_OTG_FS</Define>
               <Undefine></Undefine>
-              <IncludePath>.\User;.\Libraries\CMSIS;.\Libraries\STM32F4xx_StdPeriph_Driver\inc;.\APP\led;.\Public;.\APP\beep;.\APP\key;.\APP\exti;.\APP\time;.\APP\iwdg;.\APP\wwdg;.\APP\input;.\APP\rng;.\APP\wkup;.\APP\adc;.\APP\adc_temp;.\APP\dac;.\APP\dma;.\APP\rtc;.\APP\24Cxx;.\APP\iic;.\APP\ds18b20;.\APP\hwjs;.\APP\rs485;.\APP\can;.\APP\agv_blob;.\APP\jetson_can;.\APP\jetson_eth;.\APP\tftlcd;.\APP\flash;.\APP\spi;.\APP\stm32_flash;.\APP\sram;.\Malloc;.\APP\sd;.\Fatfs\src;.\Fatfs\fatfs_app;.\Font;.\Picture;.\APP\pwm;.\APP\rs232;.\LwIP;.\LwIP\arch;.\LwIP\lwip_app\lwip_comm;.\LwIP\lwip-1.4.1\src\include;.\LwIP\lwip-1.4.1\src\include\ipv4;.\LwIP\lwip-1.4.1\src\include\netif;.\Libraries\STM32F4x7_ETH_Driver\inc;.\APP\lan8720;.\USB\USB_APP;.\USB\STM32_USB_OTG_Driver\inc;.\USB\STM32_USB_HOST_Library\Core\inc;.\USB\STM32_USB_HOST_Library\Class\MSC\inc;.\APP\touch_key;.\APP\lsens;.\APP\mpu6050;.\APP\mpu6050\eMPL;.\APP\touch;.\T9INPUT;.\ICON;.\GUI;.\GUI_APP;.\APP\wm8978;.\APP\nrf24l01;.\APP\i2s;.\AudioDecod;.\AudioDecod\wav;.\USB\STM32_USB_Device_Library\Core\inc;.\USB\STM32_USB_Device_Library\Class\msc\inc;.\LwIP\lwip_app\web_server_demo;.\APP\dcmi;.\APP\ov2640;.\MJPEG;.\MJPEG\JPEG;.\APP\distance_sensor;.\APP\usart3;.\APP\arbiter;.\APP\chassis_test;.\APP\gps;.\Middlewares\FreeRTOS\include;.\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F;.\APP\freertos;.\APP\freertos\tasks</IncludePath>
+              <IncludePath>.\User;.\Libraries\CMSIS;.\Libraries\STM32F4xx_StdPeriph_Driver\inc;.\APP\led;.\Public;.\APP\beep;.\APP\key;.\APP\exti;.\APP\time;.\APP\iwdg;.\APP\wwdg;.\APP\input;.\APP\rng;.\APP\wkup;.\APP\adc;.\APP\adc_temp;.\APP\dac;.\APP\dma;.\APP\rtc;.\APP\24Cxx;.\APP\iic;.\APP\ds18b20;.\APP\hwjs;.\APP\rs485;.\APP\can;.\APP\agv_blob;.\APP\jetson_can;.\APP\jetson_eth;.\APP\tftlcd;.\APP\flash;.\APP\spi;.\APP\stm32_flash;.\APP\sram;.\Malloc;.\APP\sd;.\Fatfs\src;.\Fatfs\fatfs_app;.\Font;.\Picture;.\APP\pwm;.\APP\rs232;.\LwIP;.\LwIP\arch;.\LwIP\lwip_app\lwip_comm;.\LwIP\lwip-1.4.1\src\include;.\LwIP\lwip-1.4.1\src\include\ipv4;.\LwIP\lwip-1.4.1\src\include\netif;.\Libraries\STM32F4x7_ETH_Driver\inc;.\APP\lan8720;.\USB\USB_APP;.\USB\STM32_USB_OTG_Driver\inc;.\USB\STM32_USB_HOST_Library\Core\inc;.\USB\STM32_USB_HOST_Library\Class\MSC\inc;.\APP\touch_key;.\APP\lsens;.\APP\mpu6050;.\APP\mpu6050\eMPL;.\APP\touch;.\T9INPUT;.\ICON;.\GUI;.\GUI_APP;.\APP\wm8978;.\APP\nrf24l01;.\APP\i2s;.\AudioDecod;.\AudioDecod\wav;.\USB\STM32_USB_Device_Library\Core\inc;.\USB\STM32_USB_Device_Library\Class\msc\inc;.\LwIP\lwip_app\web_server_demo;.\APP\dcmi;.\APP\ov2640;.\MJPEG;.\MJPEG\JPEG;.\APP\distance_sensor;.\APP\arbiter;.\APP\chassis_test;.\APP\gps;.\Middlewares\FreeRTOS\include;.\Middlewares\FreeRTOS\portable\RVDS\ARM_CM4F;.\APP\freertos;.\APP\freertos\tasks</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -829,11 +829,6 @@
               <FileName>distance_sensor.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\APP\distance_sensor\distance_sensor.c</FilePath>
-            </File>
-            <File>
-              <FileName>usart3.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\APP\usart3\usart3.c</FilePath>
             </File>
             <File>
               <FileName>gps.c</FileName>

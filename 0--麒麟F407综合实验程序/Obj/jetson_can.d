@@ -41,7 +41,7 @@
 .\obj\jetson_can.o: .\APP\can\can2.h
 .\obj\jetson_can.o: .\APP\distance_sensor\distance_sensor.h
 .\obj\jetson_can.o: .\APP\beep\beep.h
-.\obj\jetson_can.o: .\APP\usart3\usart3.h
+.\obj\jetson_can.o: .\APP\rs232\rs232.h
 .\obj\jetson_can.o: .\APP\jetson_eth\jetson_eth.h
 .\obj\jetson_can.o: .\APP\freertos\app_boot.h
 .\obj\jetson_can.o: .\APP\agv_blob\agv_blob_rs232.h

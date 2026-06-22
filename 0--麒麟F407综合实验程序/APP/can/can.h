@@ -31,7 +31,7 @@ u8 CAN1_Receive_Msg_WithID(u32 *id, u8 *buf);
 u8 CAN1_Receive_Msg(u8 *buf);
 
 // RANGER MINI 3.0 专用函数
-void CAN1_Init_RangerMini(void);  // 初始化适配RANGER MINI的CAN配置
+void Arv_TranReceive_Init(void);  /* 底盘 CAN1 收发初始化（Ranger Mini） */
 u8 CAN1_Send_ControlCmd(u16 speed_mm_s, float angle_rad);  // 发送运动控制指令
 u8 CAN1_Send_ModeSet(u8 mode);  // 发送控制模式设定
 u8 CAN1_Send_ErrorClear(void);  // 发送错误清除指令

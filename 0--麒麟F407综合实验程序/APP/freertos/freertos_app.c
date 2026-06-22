@@ -4,7 +4,7 @@
 #include "rtos_tasks.h"
 #include "motion_ui_shared.h"
 #include "usart.h"
-#include "usart3.h"
+#include "rs232.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stm32f4xx_usart.h"
@@ -33,10 +33,6 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 
 void App_SharedInit(void)
 {
-	Usart_PrintMutexInit();
-#if !JETSON_LINK_CAN && !JETSON_LINK_ETH
-	USART3_TxMutexInit();
-#endif
 	MotionUI_SharedInit();
 }
 

@@ -58,7 +58,7 @@
 .\obj\freertos_app.o: .\Middlewares\FreeRTOS\include\semphr.h
 .\obj\freertos_app.o: .\Middlewares\FreeRTOS\include\queue.h
 .\obj\freertos_app.o: .\Public\usart.h
-.\obj\freertos_app.o: .\APP\usart3\usart3.h
+.\obj\freertos_app.o: .\APP\rs232\rs232.h
 .\obj\freertos_app.o: .\APP\arbiter\arbiter.h
 .\obj\freertos_app.o: .\APP\jetson_can\jetson_can.h
 .\obj\freertos_app.o: .\APP\gps\gps.h

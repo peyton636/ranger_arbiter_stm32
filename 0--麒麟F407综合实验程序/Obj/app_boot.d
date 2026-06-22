@@ -36,7 +36,7 @@
 .\obj\app_boot.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h
 .\obj\app_boot.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h
 .\obj\app_boot.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
-.\obj\app_boot.o: .\APP\usart3\usart3.h
+.\obj\app_boot.o: .\APP\rs232\rs232.h
 .\obj\app_boot.o: .\APP\arbiter\arbiter.h
 .\obj\app_boot.o: .\APP\jetson_can\jetson_can.h
 .\obj\app_boot.o: .\APP\gps\gps.h

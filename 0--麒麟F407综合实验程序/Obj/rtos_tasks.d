@@ -58,7 +58,7 @@
 .\obj\rtos_tasks.o: APP\freertos\sensor_ui.h
 .\obj\rtos_tasks.o: .\APP\arbiter\arbiter.h
 .\obj\rtos_tasks.o: .\APP\can\can.h
-.\obj\rtos_tasks.o: .\APP\usart3\usart3.h
+.\obj\rtos_tasks.o: .\APP\rs232\rs232.h
 .\obj\rtos_tasks.o: .\APP\jetson_can\jetson_can.h
 .\obj\rtos_tasks.o: .\APP\gps\gps.h
 .\obj\rtos_tasks.o: .\Public\usart.h

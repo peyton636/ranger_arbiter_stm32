@@ -68,6 +68,9 @@
 .\obj\com_app.o: .\APP\can\can.h
 .\obj\com_app.o: .\APP\rs485\rs485.h
 .\obj\com_app.o: .\APP\rs232\rs232.h
+.\obj\com_app.o: .\APP\arbiter\arbiter.h
+.\obj\com_app.o: .\APP\jetson_can\jetson_can.h
+.\obj\com_app.o: .\APP\gps\gps.h
 .\obj\com_app.o: .\T9INPUT\t9input.h
 .\obj\com_app.o: .\T9INPUT\pyinput.h
 .\obj\com_app.o: D:\Keil5\ARM\ARMCC\Bin\..\include\stdlib.h

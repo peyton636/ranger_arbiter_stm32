@@ -12,8 +12,7 @@
 
 
 
-/* 1=Jetson 走 CAN2(PB5/PB6)；0=Jetson 走 USART2(PA2/PA3) */
-
+/* Jetson 固定以太网 UDP；CAN2/RS232 链路已弃用 */
 #define JETSON_LINK_CAN  0
 
 
@@ -40,7 +39,7 @@
 
 
 
-void JetsonCAN_Init(void);
+void Protocol_Init(void);
 
 void JetsonCAN_ProcessRx(const ArbiterState_t *state, u16 nearest_mm);
 

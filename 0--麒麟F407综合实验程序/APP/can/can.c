@@ -131,7 +131,7 @@ u8 CAN1_Receive_Msg(u8 *buf)
 // ≈‰÷√£∫APB1=42MHz, 500kbps
 // SJW=1, BS1=6, BS2=5, Prescaler=7
 // º∆À„£∫42MHz / (7 °¡ (6+5+1)) = 500kbps
-void CAN1_Init_RangerMini(void)
+void Arv_TranReceive_Init(void)
 {
 	CAN1_Mode_Init(CAN_SJW_1tq, CAN_BS2_5tq, CAN_BS1_6tq, 7, CAN_Mode_Normal);
 }

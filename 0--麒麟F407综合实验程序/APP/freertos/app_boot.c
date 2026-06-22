@@ -1,5 +1,4 @@
 #include "app_boot.h"
-#include "usart3.h"
 #include "jetson_can.h"
 #include "gps.h"
 #include "distance_sensor.h"
@@ -27,64 +26,27 @@
 static u8 s_eth_ready = 0;
 static volatile u32 s_eth_rx_frames = 0;
 
-void App_EthInit(void)
+static void Hardware_EthInit(void)
 {
 	u8 i;
 	u8 ret;
 
-	/* TIM3 10ms 节拍，供 lwip_localtime / ARP / TCP 定时器 */
 	TIM3_Init(999, 839);
-
-	printf("[ETH] Init lwIP (plug cable before power-on if possible)\r\n");
-	printf("[ETH] mem1 used %u%% before lwIP\r\n", (unsigned)my_mem_perused(SRAMIN));
 	for(i = 0; i < 5; i++)
 	{
 		ret = lwip_comm_init();
 		if(ret == 0)
 		{
 			s_eth_ready = 1;
-			printf("[ETH] lwIP OK  MCU IP %u.%u.%u.%u  mask 255.255.255.0  peer %u.%u.%u.%u\r\n",
-				(unsigned)lwipdev.ip[0], (unsigned)lwipdev.ip[1],
-				(unsigned)lwipdev.ip[2], (unsigned)lwipdev.ip[3],
-				(unsigned)lwipdev.remoteip[0], (unsigned)lwipdev.remoteip[1],
-				(unsigned)lwipdev.remoteip[2], (unsigned)lwipdev.remoteip[3]);
-			printf("[ETH] mem1=%u%% mem2=%u%% after lwIP\r\n",
-				(unsigned)my_mem_perused(SRAMIN), (unsigned)my_mem_perused(SRAMEX));
-			if(LAN8720_LinkUp())
-			{
-				u8 spd = LAN8720_Get_Speed();
-				printf("[ETH] PHY link UP, speed code=%u (6/14=100M FD)\r\n", (unsigned)spd);
-			}
-			else
-			{
-				printf("[ETH] PHY link DOWN - no cable or wrong port! ping will fail\r\n");
-			}
-			printf("[ETH] MAC %02X:%02X:%02X:%02X:%02X:%02X\r\n",
-				lwipdev.mac[0], lwipdev.mac[1], lwipdev.mac[2],
-				lwipdev.mac[3], lwipdev.mac[4], lwipdev.mac[5]);
-			printf("[ETH] Peer(host) %u.%u.%u.%u, test: host ping %u.%u.%u.%u\r\n",
-				(unsigned)lwipdev.remoteip[0], (unsigned)lwipdev.remoteip[1],
-				(unsigned)lwipdev.remoteip[2], (unsigned)lwipdev.remoteip[3],
-				(unsigned)lwipdev.ip[0], (unsigned)lwipdev.ip[1],
-				(unsigned)lwipdev.ip[2], (unsigned)lwipdev.ip[3]);
-#if ETH_RX_POLL_ONLY
-			printf("[ETH] RX poll mode: NetTask drains DMA (no ETH IRQ)\r\n");
-#endif
 			ETH_RecoverRxDma();
 			ETH->DMARPDR = 0;
 			lwip_comm_gratuitous_arp();
-			printf("[ETH] gratuitous ARP sent, tx_ok=%lu\r\n",
-				(unsigned long)ETH_TxOkCount());
-#if JETSON_USE_BLOB_V2 && !JETSON_LINK_CAN
 			JetsonEth_Init();
-#endif
 			return;
 		}
-		printf("[ETH] lwIP init failed code=%u retry %u/5 (1=mem 2=PHY 3=netif)\r\n",
-			(unsigned)ret, (unsigned)(i + 1));
 		delay_ms(200);
 	}
-	printf("[ETH] lwIP disabled; CAN/RS232/motion unaffected\r\n");
+	s_eth_ready = 0;
 }
 
 void App_EthPoll(void)
@@ -95,7 +57,6 @@ void App_EthPoll(void)
 		return;
 
 #if ETH_RX_POLL_ONLY
-	/* 每帧单独进出临界区，避免长时间 __disable_irq 丢 USART3 测距字节 */
 	while(ETH_GetRxPktSize(DMARxDescToGet) != 0)
 	{
 		primask = __get_PRIMASK();
@@ -128,54 +89,61 @@ void App_EthGetStats(u32 *rx_frames, u8 *link_up)
 }
 #endif
 
-void App_MotionHwInit(void)
+/*
+ * 运动/通信外设初始化（在 Hardware_Check 基础外设 + TIM4 之后调用）
+ *
+ * 1. GPS（USART6 9600）
+ * 2. 距离传感器（硬件 USART3）
+ * 3. 底盘 CAN 收发（Arv_TranReceive_Init）
+ * 4. 仲裁器 + 使能 CAN 发送
+ * 5. Jetson 协议层状态复位（无 RS232/CAN2 物理链路）
+ * 6. 以太网 + JetsonEth（固定 ETH，PA2=MDIO 不复用 RS232）
+ */
+void Hardware_Init(void)
 {
-	USART1_Probe("MOTION");
-	/* PRECHIN 在 Hardware_Check 里开了 TIM2(100ms) 拍照中断，ISR 内 KEY_Scan+delay_ms 与 KeyTask 冲突 */
 	TIM_Cmd(TIM2, DISABLE);
 	TIM_ITConfig(TIM2, TIM_IT_Update, DISABLE);
 
 #if APP_SENSOR_TEST_ONLY
-	printf("[BOOT] SENSOR_TEST_ONLY: ETH/GPS/CAN/Jetson/Arbiter OFF\r\n");
-	printf("[BOOT] TIM4 20ms trigger + USART3 PB10(trig)/PB11(RX) 9600\r\n");
 	DistanceSensor_Init();
+	return;
+#endif
+
+	Usart_PrintMutexInit();
+
+	GPS_USART6_Init(9600);
+	DistanceSensor_Init();
+	Arv_TranReceive_Init();
+	Arbiter_Init();
+	Arbiter_EnableCANMode();
+	Protocol_Init();
+
+#if ETH_LWIP_ENABLE
+	Hardware_EthInit();
+	USART1_Init(115200);
+#endif
+}
+
+void App_MotionHwInit(void)
+{
+	USART1_Probe("MOTION");
+
+#if APP_SENSOR_TEST_ONLY
+	printf("[BOOT] SENSOR_TEST_ONLY: ETH/GPS/CAN/Jetson/Arbiter OFF\r\n");
+	printf("[BOOT] TIM4 20ms + hardware USART3 PB10(trig)/PB11(RX) 9600\r\n");
 	printf("[BOOT] Wait [DS TEST] every 2s: proc_tick should grow, uart_rx>0 if module OK\r\n");
 	return;
 #endif
 
-#if JETSON_LINK_CAN
-	JetsonCAN_Init();
-#else
-#if ETH_LWIP_ENABLE && JETSON_USE_BLOB_V2
-	/* 以太网模式：不 init USART2(PA2/PA3)，PA2 留给 ETH_MDIO */
-#else
-	USART3_Init();
-	USART3_PrintHwDiag();
-#endif
-	JetsonCAN_Init();
-#endif
-	
-	GPS_USART6_Init(9600);
-	DistanceSensor_Init();
-	CAN1_Init_RangerMini();
-	Arbiter_Init();
-	Arbiter_EnableCANMode();
-
-#if JETSON_LINK_CAN
-	printf("[JETSON] CAN2 PB5(RX)/PB6(TX), 500kbps, V3 24B as 3x8B frames\r\n");
-	printf("[JETSON] CAN IDs: down=0x101 status=0x102 detail=0x103 gps=0x104~0x106\r\n");
-	printf("[JETSON] Wire PB6->TJA1050 TXD, PB5<-RXD, CANH/L to Jetson USB-CAN\r\n");
-#else
-#if JETSON_USE_BLOB_V2
 #if ETH_LWIP_ENABLE
 	printf("[JETSON] Ethernet UDP BLOB v2 down:%u up_peer:%u (0xAB)\r\n",
 		(unsigned)JETSON_ETH_PORT_DOWN, (unsigned)JETSON_ETH_PORT_UP);
+#if BLOB_UPLINK_MINIMAL
+	printf("[JETSON] uplink profile=MINIMAL (0x02/0x03@50Hz, others reduced)\r\n");
 #else
-	printf("[JETSON] USART2 PA2/PA3, 115200, BLOB v2 (0xAB) down/up + 0xA5 svc\r\n");
+	printf("[JETSON] uplink profile=FULL\r\n");
 #endif
-#else
-	printf("[JETSON] USART2 PA2/PA3, 115200, V3 24-byte (0xAA) frame\r\n");
-#endif
+	printf("[JETSON] downlink: 0xAB MSG 0x01; log tag [JETSON BLOB CMD]\r\n");
 #endif
 
 	printf("[CAN1] Chassis PA11/12 init OK, MCR=0x%08X MSR=0x%08X\r\n",
@@ -187,32 +155,38 @@ void App_MotionHwInit(void)
 		g_beep_dist_enable ? "ON" : "OFF");
 #endif
 
-#if !JETSON_LINK_CAN
-#if JETSON_USE_BLOB_V2
-#if BLOB_UPLINK_MINIMAL
-	printf("[JETSON] uplink profile=MINIMAL (0x02/0x03@50Hz, others reduced)\r\n");
-#else
-	printf("[JETSON] uplink profile=FULL\r\n");
-#endif
-#if JETSON_USART2_DMA_TX
-	printf("[JETSON] USART2 DMA TX + byte-ISR RX (non-blocking TX)\r\n");
-#else
-	printf("[JETSON] USART2 byte-ISR RX, blocking TXE TX\r\n");
-#endif
-	printf("[JETSON] downlink: 0xAB MSG 0x01; log tag [JETSON BLOB CMD]\r\n");
-#else
-	printf("[JETSON] RS232 also sends GPS/0x108/0x109/0x10B via 0xA5 service frames\r\n");
-#endif
-#endif
-	printf("[GPS] USART6 RX ready on PC7 (TX=PC6), auto cfg: GPS+BDS 5Hz RMC/GGA/GSA\r\n");
+	printf("[GPS] hardware USART6 PC6(TX)/PC7(RX), auto cfg GPS+BDS 5Hz RMC/GGA/GSA\r\n");
+	printf("[DS] hardware USART3 PB10(trig)/PB11(RX) 9600, TIM4 20ms trigger\r\n");
+
 #if ETH_LWIP_ENABLE
-	/* 必须放在 USART3_Init 之后：PA2 与 ETH_MDIO 复用，以太网 init 会最后占住 PA2 */
-	App_EthInit();
-	USART1_Init(115200);
-	USART1_Probe("ETHOK");
-#if !JETSON_LINK_CAN
-	printf("[ETH] PA2=ETH_MDIO after init; Jetson RS232 TX(PA2) disabled while ETH on\r\n");
+	if(App_EthIsReady())
+	{
+		printf("[ETH] lwIP OK  MCU IP %u.%u.%u.%u  peer %u.%u.%u.%u\r\n",
+			(unsigned)lwipdev.ip[0], (unsigned)lwipdev.ip[1],
+			(unsigned)lwipdev.ip[2], (unsigned)lwipdev.ip[3],
+			(unsigned)lwipdev.remoteip[0], (unsigned)lwipdev.remoteip[1],
+			(unsigned)lwipdev.remoteip[2], (unsigned)lwipdev.remoteip[3]);
+		printf("[ETH] mem1=%u%% mem2=%u%%\r\n",
+			(unsigned)my_mem_perused(SRAMIN), (unsigned)my_mem_perused(SRAMEX));
+		if(LAN8720_LinkUp())
+			printf("[ETH] PHY link UP, speed code=%u (6/14=100M FD)\r\n",
+				(unsigned)LAN8720_Get_Speed());
+		else
+			printf("[ETH] PHY link DOWN - no cable or wrong port\r\n");
+		printf("[ETH] MAC %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+			lwipdev.mac[0], lwipdev.mac[1], lwipdev.mac[2],
+			lwipdev.mac[3], lwipdev.mac[4], lwipdev.mac[5]);
+#if ETH_RX_POLL_ONLY
+		printf("[ETH] RX poll mode: NetTask drains DMA (no ETH IRQ)\r\n");
 #endif
+		printf("[ETH] gratuitous ARP sent, tx_ok=%lu\r\n",
+			(unsigned long)ETH_TxOkCount());
+		USART1_Probe("ETHOK");
+	}
+	else
+	{
+		printf("[ETH] lwIP init failed; CAN/motion unaffected\r\n");
+	}
 #endif
 }
 

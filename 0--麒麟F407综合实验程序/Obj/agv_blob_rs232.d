@@ -37,7 +37,7 @@
 .\obj\agv_blob_rs232.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dac.h
 .\obj\agv_blob_rs232.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dcmi.h
 .\obj\agv_blob_rs232.o: .\Libraries\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_fsmc.h
-.\obj\agv_blob_rs232.o: .\APP\usart3\usart3.h
+.\obj\agv_blob_rs232.o: .\APP\rs232\rs232.h
 .\obj\agv_blob_rs232.o: .\APP\arbiter\arbiter.h
 .\obj\agv_blob_rs232.o: .\APP\jetson_can\jetson_can.h
 .\obj\agv_blob_rs232.o: .\APP\gps\gps.h
