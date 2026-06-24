@@ -162,53 +162,45 @@ Jetson（全局）                         MCU（局部）
 
 ## 3. BLOB 协议扩展（相对现有 `0x01~0x10`）
 
+> **权威定义**：[Jetson_BLOB协议_v2.md](./Jetson_BLOB协议_v2.md) **§5**（v2.0-draft.5.12）。下文为摘要。
+
 ### 3.1 可复用（不必新建）
 
 | MSG | 用途 |
 |-----|------|
-| `0x01` | 直接控车（`nav_mode=DIRECT`） |
+| `0x01` | 直接控车 + **链路心跳**（所有模式均须 ≤20ms 发） |
 | `0x04` | 四路超声距离 + stamp → DWA `dist()` |
 | `0x02/0x03` | 速度、仲裁状态监控 |
 | `0x08` | 四轮里程（odom 辅助校正） |
 | `0x107/0x108` | 时间同步（与导航并行） |
 
-### 3.2 新增（建议 2 个 MSG）
+### 3.2 新增（2 个 MSG，阶段 0）
 
-#### 下行 `0x11` — `local_goal_t`（20B，Jetson → MCU）
+#### 下行 `0x11` — `local_goal_t`（**22 B**，Jetson → MCU）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | timestamp_ms | u32 BE | 发帧时刻 |
-| goal_x_mm | s32 BE | **车体坐标系** 目标 x（前为正） |
-| goal_y_mm | s32 BE | 目标 y（左为正） |
-| goal_theta_mrad | s16 BE | 目标朝向，0.001 rad |
-| nav_mode | u8 | 见下表 |
-| seq | u8 | 序号 |
-| max_v_mm_s | s16 BE | 限速，0=默认 |
-| max_omega_mrad_s | s16 BE | 角速度限速 |
-| hold_ms | u8 | 超时未更新 → MCU 减速停车 |
+| goal_x_mm / goal_y_mm | s32 BE | **body frame**（前/左，mm） |
+| goal_theta_mrad | s16 BE | 目标朝向 0.001 rad |
+| nav_mode | u8 | 0=DIRECT 1=LOCAL_NAV 2=PAUSE 3=ESTOP |
+| seq | u8 | 目标序号（独立于 0x01 SEQ） |
+| max_v_mm_s / max_omega_mrad_s | s16 BE | 限速，0=默认 |
+| hold | u8 | 保活：timeout_ms = hold×50，0→500ms |
+| flags | u8 | bit0=GOAL_THETA_VALID |
 
-**nav_mode**：
+**DIRECT 时**：运动仍来自 `0x01`；**LOCAL_NAV 时**：0x01 的 v/ω 忽略，但仍须发 0x01 心跳。
 
-| 值 | 名称 | MCU 行为 |
-|----|------|----------|
-| 0 | DIRECT | 用 `0x01` 直接速度，DWA 不跑 |
-| 1 | LOCAL_NAV | DWA 追 `0x11` 目标 |
-| 2 | PAUSE | 输出 0 |
-| 3 | ESTOP | 急停 |
-
-#### 上行 `0x12` — `nav_feedback_t`（28B，MCU → Jetson）
+#### 上行 `0x12` — `nav_feedback_t`（**28 B**，MCU → Jetson）
 
 | 字段 | 说明 |
 |------|------|
 | pose_x/y_mm, pose_theta_mrad | MCU odom |
-| cmd_v, cmd_omega | DWA 输出（仲裁前） |
+| cmd_v, cmd_omega | 规划器输出（仲裁前） |
 | fb_v, fb_omega | 底盘反馈 |
-| goal_dist_mm | 到目标距离 |
+| goal_dist_mm | 到目标距离（u16，无效 0xFFFF） |
 | plan_status | 0=IDLE 1=TRACKING 2=REACHED 3=BLOCKED 4=FAIL |
-| nav_mode_fb, seq_echo | 回显 |
-
-同步修订：`docs/Jetson_BLOB协议_v2.md` 增章节。
+| nav_mode_fb, seq_echo, flags | 回显 |
 
 ---
 
@@ -265,7 +257,7 @@ APP/local_nav/
 
 | # | 待办 | 负责侧 | 状态 |
 |---|------|--------|------|
-| 0.1 | `Jetson_BLOB协议_v2.md` 增加 `0x11`/`0x12` 定义 | 文档 | ⬜ |
+| 0.1 | `Jetson_BLOB协议_v2.md` 增加 `0x11`/`0x12` 定义 | 文档 | ✅ |
 | 0.2 | `agv_blob_wire.h` 增加 `BLOB_MSG_LOCAL_GOAL(0x11)`、`BLOB_MSG_NAV_FB(0x12)` 及 payload 长度 | MCU | ⬜ |
 | 0.3 | `BlobPack_HandleDownlink` 解析 `0x11` → `LocalGoal_Write()` | MCU | ⬜ |
 | 0.4 | `BlobPack_UplinkTick` 周期发送 `0x12`（可先填 IDLE） | MCU | ⬜ |
